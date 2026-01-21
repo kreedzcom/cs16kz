@@ -215,11 +215,11 @@ void split_net_address(const char* addr, char* ip, size_t ip_maxlen, char* port,
         return;
     }
     
-    ptr = strstr(addr, ":");
-    if(ptr)
+    const char *str = strstr(addr, ":");
+    if(str)
     {
-        snprintf(ip, ip_maxlen, "%.*s", static_cast<int>(ptr - addr), addr);
-        snprintf(port, port_maxlen, "%s", ptr + 1);
+        snprintf(ip, ip_maxlen, "%.*s", static_cast<int>(str - addr), addr);
+        snprintf(port, port_maxlen, "%s", str + 1);
     }
     else
     {
