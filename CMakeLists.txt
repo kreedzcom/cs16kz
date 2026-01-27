@@ -52,6 +52,7 @@ include_directories(
 set(SOURCES
     src/amxxmodule.cpp
     src/mod_rehlds_api.cpp
+    src/kz_basic_ac.cpp
     src/kz_util.cpp
     src/kz_cvars.cpp
     src/kz_ws.cpp

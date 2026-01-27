@@ -8,6 +8,7 @@
 #include "kz_replay.h"
 #include "kz_storage.h"
 #include "kz_natives.h"
+#include "kz_basic_ac.h"
 
 #include <filesystem>
 
@@ -99,8 +100,9 @@ void FN_StartFrame()
     {
         RETURN_META(MRES_IGNORED);
     }
-    kz_run_cvar_checker();
     kz_log_flush();
+    kz_ac_frame();
+    kz_run_cvar_checker();
     kz_ws_run_tasks(5);
 
     RETURN_META(MRES_IGNORED);
@@ -158,6 +160,7 @@ void FN_CmdStart(const edict_t* player, const struct usercmd_s* cmd, unsigned in
     if (!MF_IsPlayerBot(id) && MF_IsPlayerAlive(id))
     {
         kz_rp_set_cmd(id, cmd);
+        kz_ac_cmd(id, cmd);
     }
     RETURN_META(MRES_IGNORED);
 }
@@ -176,6 +179,7 @@ void FN_PlayerPostThink(edict_t* pEntity)
     {
         kz_rp_set_vars(id, &(pEntity->v));
         kz_rp_write_frame(id);
+        kz_ac_postthink(id, pEntity);
     }
     RETURN_META(MRES_IGNORED);
 }
