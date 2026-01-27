@@ -36,6 +36,10 @@
             .url = "https://github.com/zig-devel/mbedtls/archive/refs/tags/3.6.5-0.tar.gz",
             .hash = "mbedtls-3.6.5-0-DmmJzvdDAADGgugvv4S0AVFI_Hcdh4I7EVeYkawLb43S",
         },
+        .ixwebsocket = .{
+            .url = "https://github.com/machinezone/IXWebSocket/archive/refs/tags/v11.4.6.zip",
+            .hash = "N-V-__8AALJbJgBVyRvYH2x1D5kvyKJFN6s40Fehg-CgOUUN",
+        },
     },
     .paths = .{
         "build.zig",

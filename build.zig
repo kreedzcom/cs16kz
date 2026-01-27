@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) !void
 		return;
 	}
 	
-    const optimise = b.standardOptimizeOption(.{});
+	const optimise = b.standardOptimizeOption(.{});
 	
 	// parson
 	const parson = b.addLibrary(.{
@@ -40,12 +40,6 @@ pub fn build(b: *std.Build) !void
 	
 	parson.addIncludePath(b.path("deps/parson/"));
 	parson.linkLibC();
-	
-	// mbedtls
-	const mbedtls = b.dependency("mbedtls", .{
-		.target = target,
-		.optimize = .ReleaseFast,
-	});
 	
 	// sqlitecpp
 	const sqlitecpp = b.addLibrary(.{
@@ -79,10 +73,23 @@ pub fn build(b: *std.Build) !void
 	sqlitecpp.linkLibCpp();
 	
 	
+	// mbedtls
+	const dep_mbedtls = b.dependency("mbedtls", .{
+		.target = target,
+		.optimize = .ReleaseFast,
+	});
+	
+	const dep_mbedtls_c = dep_mbedtls.builder.dependency("mbedtls", .{});
+	
 	// ixwebsocket
+	
+	const dep_ixwebsocket = b.dependency("ixwebsocket", .{
+		.target = target,
+		.optimize = .ReleaseFast,
+	});
+	
 	// USE_TLS ON
 	// USE_ZLIB ON
-	// -fexceptions, bruh?
 	const ixwebsocket = b.addLibrary(.{
 		.name = "ixwebsocket",
 		.root_module = b.createModule(.{
@@ -93,7 +100,7 @@ pub fn build(b: *std.Build) !void
 	});
 	
 	ixwebsocket.addCSourceFiles(.{
-		.root = b.path("deps/ixwebsocket/"),
+		.root = dep_ixwebsocket.path(""),
 		.files = &.{
 			"ixwebsocket/IXBench.cpp",
 			"ixwebsocket/IXCancellationRequest.cpp",
@@ -138,9 +145,9 @@ pub fn build(b: *std.Build) !void
 	});
 	
 	var mbedtlsVersionGreaterThan3: bool = true;
-	std.fs.accessAbsolute("/usr/include/mbedtls/build_info.h", .{}) catch |err| {
+	
+	dep_mbedtls_c.path("").getPath3(b, null).access("include/mbedtls/build_info.h", .{}) catch {
 		mbedtlsVersionGreaterThan3 = false;
-		std.debug.print("Mbedtls older than v4 {}.\n", .{err});
 	};
 	
 	ixwebsocket.root_module.addCMacro("IXWEBSOCKET_USE_TLS", "");
@@ -150,14 +157,16 @@ pub fn build(b: *std.Build) !void
 		ixwebsocket.root_module.addCMacro("IXWEBSOCKET_USE_MBED_TLS_MIN_VERSION_3", "");
 	}
 	
-	ixwebsocket.addIncludePath(b.path("deps/ixwebsocket/"));
+	ixwebsocket.addIncludePath(dep_ixwebsocket.path(""));
+	ixwebsocket.addIncludePath(dep_ixwebsocket.path("ixwebsocket/"));
+	ixwebsocket.addIncludePath(dep_mbedtls.path(""));
 	if (target.result.os.tag == .linux)
 	{
 		ixwebsocket.root_module.addSystemIncludePath(.{.cwd_relative = "/usr/include/"});
 	}
 	ixwebsocket.linkLibC();
 	ixwebsocket.linkLibCpp();
-	ixwebsocket.linkLibrary(mbedtls.artifact("mbedtls"));
+	ixwebsocket.linkLibrary(dep_mbedtls.artifact("mbedtls"));
     
 	// the lib!!!!
 	
@@ -207,7 +216,7 @@ pub fn build(b: *std.Build) !void
 	lib.addIncludePath(b.path("deps/sdk/metamod"));
 	lib.addIncludePath(b.path("deps/sdk/amxmodx/public"));
 	lib.addIncludePath(b.path("deps/sdk/amxmodx/public/resdk"));
-	lib.addIncludePath(b.path("deps/ixwebsocket"));
+	lib.addIncludePath(dep_ixwebsocket.path(""));
 	lib.addIncludePath(b.path("deps/SQLiteCpp/include/"));
 	lib.addIncludePath(b.path("deps"));
 	lib.addIncludePath(b.path("src/include"));
