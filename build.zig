@@ -10,20 +10,23 @@ pub fn build(b: *std.Build) !void
 	if (target.result.os.tag != .linux and target.result.os.tag != .windows)
 	{
 		std.debug.print("{} is not supported as a build target.\n", .{target.result.os.tag});
-		// std.process.exit(1);
 		return;
 	}
 	
 	if (target.result.cpu.arch != .x86)
 	{
 		std.debug.print("Only x86 is supported as a build target.\n", .{});
-		// std.process.exit(1);
 		return;
 	}
 	
 	const optimise = b.standardOptimizeOption(.{});
 	
 	// parson
+	const dep_parson = b.dependency("parson", .{
+		.target = target,
+		.optimize = .ReleaseFast,
+	});
+	
 	const parson = b.addLibrary(.{
 		.name = "parson",
 		.root_module = b.createModule(.{
@@ -34,12 +37,14 @@ pub fn build(b: *std.Build) !void
 	});
 	
 	parson.addCSourceFile(.{
-		.file = b.path("deps/parson/parson.c"),
+		.file = dep_parson.path("parson.c"),
 		.flags = &.{"-std=c89"},
 	});
 	
-	parson.addIncludePath(b.path("deps/parson/"));
+	parson.addIncludePath(dep_parson.path(""));
 	parson.linkLibC();
+	
+	parson.installHeadersDirectory(dep_parson.path(""), "parson", .{});
 	
 	// sqlitecpp
 	const dep_sqlitecpp = b.dependency("sqlitecpp", .{
@@ -172,7 +177,16 @@ pub fn build(b: *std.Build) !void
 	ixwebsocket.linkLibC();
 	ixwebsocket.linkLibCpp();
 	ixwebsocket.linkLibrary(dep_mbedtls.artifact("mbedtls"));
-    
+	
+	// SPSCQueue
+	const dep_spscqueue = b.dependency("spscqueue", .{});
+	
+	// metamod
+	const dep_metamod = b.dependency("metamod", .{});
+	
+	// hlsdk
+	const dep_hlsdk = b.dependency("hlsdk", .{});
+	
 	// the lib!!!!
 	
 	const lib = b.addLibrary(.{
@@ -196,6 +210,8 @@ pub fn build(b: *std.Build) !void
 	
 	if (target.result.os.tag == .windows)
 	{
+		lib.root_module.addCMacro("WIN32", "");
+		lib.root_module.addCMacro("_WINDOWS", "");
 		// lib.linkSystemLibrary("curl.dll");
 		// lib.linkSystemLibrary("shlwapi");
 		// lib.linkSystemLibrary("imm32");
@@ -210,6 +226,9 @@ pub fn build(b: *std.Build) !void
 		lib.root_module.addSystemIncludePath(.{.cwd_relative = "/usr/include/"});
 		
 		lib.root_module.addCMacro("linux", "");
+		lib.root_module.addCMacro("LINUX", "");
+		lib.root_module.addCMacro("POSIX", "");
+		lib.root_module.addCMacro("_LINUX", "");
 		lib.linkSystemLibrary("sqlite3");
 		lib.linkSystemLibrary("ssl");
 		lib.linkSystemLibrary("crypto");
@@ -218,26 +237,37 @@ pub fn build(b: *std.Build) !void
 		lib.linkSystemLibrary("dl");
 	}
 	
-	lib.addIncludePath(b.path("deps/sdk/metamod"));
-	lib.addIncludePath(b.path("deps/sdk/amxmodx/public"));
 	lib.addIncludePath(b.path("deps/sdk/amxmodx/public/resdk"));
-	lib.addIncludePath(dep_ixwebsocket.path(""));
-	lib.addIncludePath(dep_sqlitecpp.path("include/"));
-	lib.addIncludePath(b.path("deps"));
+	lib.addIncludePath(b.path("deps/sdk/amxmodx/public"));
 	lib.addIncludePath(b.path("src/include"));
+	lib.addIncludePath(dep_ixwebsocket.path(""));
+	lib.addIncludePath(dep_metamod.path("metamod"));
+	lib.addIncludePath(dep_hlsdk.path(""));
+	lib.addIncludePath(dep_hlsdk.path("common"));
+	lib.addIncludePath(dep_hlsdk.path("dlls"));
+	lib.addIncludePath(dep_hlsdk.path("engine"));
+	lib.addIncludePath(dep_hlsdk.path("game_shared"));
+	lib.addIncludePath(dep_hlsdk.path("public"));
+	lib.addIncludePath(dep_hlsdk.path("pm_shared"));
+	lib.addIncludePath(dep_sqlitecpp.path("include/"));
+	lib.addIncludePath(dep_parson.path(""));
+	lib.addIncludePath(dep_spscqueue.path("include"));
 	lib.linkLibCpp();
 	
 	lib.addCSourceFiles(.{
 		.root = b.path("src/"),
 		.files = &.{
 			"amxxmodule.cpp",
-			"mod_rehlds_api.cpp",
-			"kz_util.cpp",
+			"kz_basic_ac.cpp",
 			"kz_cvars.cpp",
+			"kz_natives.cpp",
+			"kz_replay.cpp",
+			"kz_storage.cpp",
+			"kz_util.cpp",
 			"kz_ws.cpp",
 			"kz_ws_msgs.cpp",
-			"kz_storage.cpp",
 			"main.cpp",
+			"mod_rehlds_api.cpp",
 		},
 		.flags = &.{
 			"-std=c++17",

@@ -1,6 +1,8 @@
 #ifndef ENT_PDATA_H
 #define ENT_PDATA_H
 
+#include "platform.h"
+
 #define INDEXENT edictByIndex
 #define ENTINDEX indexOfEdict
 #define AMX_NULLENT -1

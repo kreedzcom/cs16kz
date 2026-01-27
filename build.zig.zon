@@ -44,6 +44,22 @@
             .url = "https://github.com/SRombauts/SQLiteCpp/archive/refs/tags/3.3.3.zip",
             .hash = "N-V-__8AAArooQAnBWDBB4-MdKf3vWlTvOVOEHtwCywU8cKC",
         },
+        .parson = .{
+            .url = "https://github.com/kgabis/parson/archive/ba29f4eda9ea7703a9f6a9cf2b0532a2605723c3.zip",
+            .hash = "N-V-__8AABlYAgBgXpl-LlzBe8Q2P2CP5tWosK8alxMFxYG0",
+        },
+        .spscqueue = .{
+            .url = "https://github.com/rigtorp/SPSCQueue/archive/refs/tags/v1.1.zip",
+            .hash = "N-V-__8AAKRvAQBn389kXKx_Ky3G_0k6wu_9rqiGL9P1FgQ0",
+        },
+        .metamod = .{
+            .url = "https://github.com/alliedmodders/metamod-hl1/archive/18a10db686702e8ae9e0fcb5b5febf8881dc9c2d.zip",
+            .hash = "N-V-__8AAK94FwCLwbfukVYxs-lJORNhh_Br_AQlbv_AOxBe",
+        },
+        .hlsdk = .{
+            .url = "https://github.com/alliedmodders/hlsdk/archive/a0edb7792a96998d349325bebab8ea41ec5cb239.zip",
+            .hash = "N-V-__8AALcxbwExhJLZEQxtAfIwX_TbORfZZIqGX0ZGk3c9",
+        },
     },
     .paths = .{
         "build.zig",

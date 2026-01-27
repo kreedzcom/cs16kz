@@ -1396,7 +1396,7 @@ int FN_engCreateInstancedBaseline(int classname, struct entity_state_s *baseline
 #endif // FN_engCreateInstancedBaseline
 
 #ifdef FN_Cvar_DirectSet
-void FN_Cvar_DirectSet(struct cvar_s *var, char *value);
+void FN_Cvar_DirectSet(struct cvar_s *var, const char *value);
 #endif // FN_Cvar_DirectSet
 
 #ifdef FN_ForceUnmodified
@@ -1977,7 +1977,7 @@ int FN_engCreateInstancedBaseline_Post(int classname, struct entity_state_s *bas
 #endif // FN_engCreateInstancedBaseline_Post
 
 #ifdef FN_Cvar_DirectSet_Post
-void FN_Cvar_DirectSet_Post(struct cvar_s *var, char *value);
+void FN_Cvar_DirectSet_Post(struct cvar_s *var, const char *value);
 #endif // FN_Cvar_DirectSet_Post
 
 #ifdef FN_ForceUnmodified_Post
