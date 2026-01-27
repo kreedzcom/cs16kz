@@ -42,6 +42,11 @@ pub fn build(b: *std.Build) !void
 	parson.linkLibC();
 	
 	// sqlitecpp
+	const dep_sqlitecpp = b.dependency("sqlitecpp", .{
+		.target = target,
+		.optimize = .ReleaseFast,
+	});
+	
 	const sqlitecpp = b.addLibrary(.{
 		.name = "sqlitecpp",
 		.root_module = b.createModule(.{
@@ -51,11 +56,11 @@ pub fn build(b: *std.Build) !void
 		}),
 	});
 	
-	sqlitecpp.addIncludePath(b.path("deps/SQLiteCpp/include"));
-	sqlitecpp.addIncludePath(b.path("deps/SQLiteCpp/sqlite3"));
+	sqlitecpp.addIncludePath(dep_sqlitecpp.path("include"));
+	sqlitecpp.addIncludePath(dep_sqlitecpp.path("sqlite3"));
 	
 	sqlitecpp.addCSourceFiles(.{
-		.root = b.path("deps/SQLiteCpp/"),
+		.root = dep_sqlitecpp.path(""),
 		.files = &.{
 			"src/Backup.cpp",
 			"src/Column.cpp",
@@ -217,7 +222,7 @@ pub fn build(b: *std.Build) !void
 	lib.addIncludePath(b.path("deps/sdk/amxmodx/public"));
 	lib.addIncludePath(b.path("deps/sdk/amxmodx/public/resdk"));
 	lib.addIncludePath(dep_ixwebsocket.path(""));
-	lib.addIncludePath(b.path("deps/SQLiteCpp/include/"));
+	lib.addIncludePath(dep_sqlitecpp.path("include/"));
 	lib.addIncludePath(b.path("deps"));
 	lib.addIncludePath(b.path("src/include"));
 	lib.linkLibCpp();

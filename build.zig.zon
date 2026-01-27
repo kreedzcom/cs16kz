@@ -40,6 +40,10 @@
             .url = "https://github.com/machinezone/IXWebSocket/archive/refs/tags/v11.4.6.zip",
             .hash = "N-V-__8AALJbJgBVyRvYH2x1D5kvyKJFN6s40Fehg-CgOUUN",
         },
+        .sqlitecpp = .{
+            .url = "https://github.com/SRombauts/SQLiteCpp/archive/refs/tags/3.3.3.zip",
+            .hash = "N-V-__8AAArooQAnBWDBB4-MdKf3vWlTvOVOEHtwCywU8cKC",
+        },
     },
     .paths = .{
         "build.zig",
