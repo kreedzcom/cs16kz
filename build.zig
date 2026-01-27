@@ -219,10 +219,18 @@ pub fn build(b: *std.Build) !void
 	}
 	else if (target.result.os.tag == .linux)
 	{
-		// TODO: make configurable?
-		lib.root_module.addLibraryPath(.{.cwd_relative = "/usr/lib32/"});
-		// TODO: errors if dir doesn't exist, fix :(
-		//lib.root_module.addLibraryPath(.{.cwd_relative = "/usr/lib/i386-linux-gnu/"});
+		if (std.fs.accessAbsolute("/usr/lib32/", .{}))
+		{
+			lib.root_module.addLibraryPath(.{.cwd_relative = "/usr/lib32/"});
+		}
+		else |_| undefined;
+		
+		if (std.fs.accessAbsolute("/usr/lib/i386-linux-gnu/", .{}))
+		{
+			lib.root_module.addLibraryPath(.{.cwd_relative = "/usr/lib/i386-linux-gnu/"});
+		}
+		else |_| undefined;
+		
 		lib.root_module.addSystemIncludePath(.{.cwd_relative = "/usr/include/"});
 		
 		lib.root_module.addCMacro("linux", "");
