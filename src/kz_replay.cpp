@@ -10,6 +10,9 @@
 #include <condition_variable>
 #include <filesystem>
 
+#include "zstd.h"
+#include "zstd_errors.h"
+
 #ifdef _WIN32
     #include <winsock2.h>
 #else
@@ -39,36 +42,7 @@ static void kz_rp_upload_thread(void);
 extern std::filesystem::path g_data_dir;
 
 #define CHUNK_SIZE (64*1024) // 64KB
-#define FRAME_OFFSET(field) (offsetof(krp_packet, data) + offsetof(krp_frame, field))
 
-static const struct { 
-    uint64_t bit;
-    size_t offset;
-    size_t size;
-} g_delta_fields[] = {
-    { BIT_CMD_LERP_MSEC,        FRAME_OFFSET(cmd.lerp_msec),         sizeof(krp_frame::cmd.lerp_msec) },
-    { BIT_CMD_MSEC,             FRAME_OFFSET(cmd.msec),              sizeof(krp_frame::cmd.msec) },
-    { BIT_CMD_VIEWANGLES,       FRAME_OFFSET(cmd.viewangles),        sizeof(krp_frame::cmd.viewangles) },
-    { BIT_CMD_FORWARDMOVE,      FRAME_OFFSET(cmd.forwardmove),       sizeof(krp_frame::cmd.forwardmove) },
-    { BIT_CMD_SIDEMOVE,         FRAME_OFFSET(cmd.sidemove),          sizeof(krp_frame::cmd.sidemove) },
-    { BIT_CMD_UPMOVE,           FRAME_OFFSET(cmd.upmove),            sizeof(krp_frame::cmd.upmove) },
-    { BIT_CMD_LIGHTLEVEL,       FRAME_OFFSET(cmd.lightlevel),        sizeof(krp_frame::cmd.lightlevel) },
-    { BIT_CMD_BUTTONS,          FRAME_OFFSET(cmd.buttons),           sizeof(krp_frame::cmd.buttons) },
-    { BIT_CMD_IMPULSE,          FRAME_OFFSET(cmd.impulse),           sizeof(krp_frame::cmd.impulse) },
-    { BIT_CMD_WEAPONSELECT,     FRAME_OFFSET(cmd.weaponselect),      sizeof(krp_frame::cmd.weaponselect) },
-    { BIT_CMD_IMPACT_INDEX,     FRAME_OFFSET(cmd.impact_index),      sizeof(krp_frame::cmd.impact_index) },
-    { BIT_CMD_IMPACT_POSITION,  FRAME_OFFSET(cmd.impact_position),   sizeof(krp_frame::cmd.impact_position) },
-
-    { BIT_VARS_ORIGIN,          FRAME_OFFSET(vars.origin),           sizeof(krp_frame::vars.origin) },
-    { BIT_VARS_VELOCITY,        FRAME_OFFSET(vars.velocity),         sizeof(krp_frame::vars.velocity) },
-    { BIT_VARS_V_ANGLE,         FRAME_OFFSET(vars.v_angle),          sizeof(krp_frame::vars.v_angle) },
-    { BIT_VARS_FIXANGLE,        FRAME_OFFSET(vars.fixangle),         sizeof(krp_frame::vars.fixangle) },
-    { BIT_VARS_MOVETYPE,        FRAME_OFFSET(vars.movetype),         sizeof(krp_frame::vars.movetype) },
-    { BIT_VARS_FLAGS,           FRAME_OFFSET(vars.flags),            sizeof(krp_frame::vars.flags) },
-    { BIT_VARS_BUTTON,          FRAME_OFFSET(vars.button),           sizeof(krp_frame::vars.button) },
-    { BIT_VARS_OLDBUTTON,       FRAME_OFFSET(vars.oldbuttons),       sizeof(krp_frame::vars.oldbuttons) },
-    { BIT_VARS_FUSER2,          FRAME_OFFSET(vars.fuser2),           sizeof(krp_frame::vars.fuser2) }
-};
 
 void kz_rp_run_started(int id) 
 {
@@ -239,7 +213,7 @@ void kz_rp_write_frame(int id)
         g_replay_writer_cv.notify_one();
     }
 }
-void kz_rp_upload_async(ws_upload_replay upr)
+void kz_rp_compress_and_upload_async(ws_upload_replay upr)
 {
     if (!g_replay_upload_queue.try_push(upr))
     {
@@ -270,43 +244,203 @@ static uint64_t kz_rp_timestamp_from_header(FILE* fp)
     fseek(fp, current_pos, SEEK_SET);
     return ts;
 }
+static void kz_rp_write_frametype(FILE* fp, krp_packet* curr, uint8_t frametype)
+{
+    fwrite(&frametype, sizeof(frametype), 1, fp);
+    
+    krp_mask mask = {0};
+    switch (frametype)
+    {
+        case BIT_FRAMETYPE_EVENT:
+        {
+            fwrite(&mask, sizeof(mask), 1, fp);
+            break;
+        }
+        case BIT_FRAMETYPE_DELTA:
+        {
+            break;
+        }
+        case BIT_FRAMETYPE_KEYFRAME:
+        {
+            memset(&mask, 0xFF, sizeof(mask));
+            fwrite(&mask, sizeof(mask), 1, fp);
+        }
+    }
+}
 static void kz_rp_write_event(FILE* fp, krp_packet* curr)
 {
-    uint64_t mask = BIT_EVENT;
-    fwrite(&mask, sizeof(mask), 1, fp);
-    fflush(fp);
 }
 static void kz_rp_write_keyframe(FILE* fp, krp_packet* curr)
 {
     krp_frame* frame = reinterpret_cast<krp_frame*>(curr->data);
-
-    uint64_t mask = BIT_KEYFRAME;
-    fwrite(&mask, sizeof(mask), 1, fp);
     fwrite(&frame->cmd, sizeof(frame->cmd), 1, fp);
     fwrite(&frame->vars, sizeof(frame->vars), 1, fp);
-    fflush(fp);
 }
 static void kz_rp_write_delta(FILE* fp, krp_packet* curr, krp_packet* last)
 {
-    uint64_t mask = 0ULL;
-    size_t offset = sizeof(mask);
-    uint8_t buffer[sizeof(*curr) + offset];
+    krp_mask mask = {0};
+    size_t size = sizeof(krp_frame);
 
-    uint8_t* pCurr = (uint8_t*)curr;
-    uint8_t* pLast = (uint8_t*)last;
+    uint8_t buffer[size];
+    size_t idx = 0;
 
-    for (const auto& field : g_delta_fields)
+    uint8_t* pCurr = reinterpret_cast<uint8_t*>(curr->data); // krp_frame
+    uint8_t* pLast = reinterpret_cast<uint8_t*>(last->data); // krp_frame
+
+    uint64_t* pMask  = reinterpret_cast<uint64_t*>(&mask);
+    uint8_t diff = 0;
+    size_t block = 0;
+    size_t bit = 0;
+
+    for (size_t i = 0; i < size; ++i)
     {
-        if (memcmp(pCurr + field.offset, pLast + field.offset, field.size) != 0)
+        diff = pCurr[i] ^ pLast[i];
+        if (diff != 0)
         {
-            mask |= field.bit;
-            memcpy(buffer + offset, pCurr + field.offset, field.size);
-            offset += field.size;
+            block = (i / 64);
+            bit = (i & 63);
+
+            pMask[block] |= (1ULL << bit);
+            buffer[idx++] = diff;
+        }
+    }
+    fwrite(&mask, sizeof(mask), 1, fp);
+    if (idx > 0)
+    {
+        fwrite(buffer, idx, 1, fp);
+    }
+}
+static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
+{
+    std::vector<uint8_t> frame_type;
+    std::vector<uint8_t> frame_data[sizeof(krp_frame)];
+
+    const size_t num_blocks = sizeof(krp_mask) / sizeof(uint64_t);
+    std::vector<uint8_t> frame_flags[num_blocks];
+
+    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(src.data()) + sizeof(krp_header);
+    const uint8_t* end = reinterpret_cast<const uint8_t*>(src.data()) + src.size();
+
+    while (ptr < end)
+    {
+        uint8_t type = *ptr++;
+        frame_type.push_back(type);
+
+        krp_mask mask;
+        memcpy(&mask, ptr, sizeof(krp_mask)); ptr += sizeof(krp_mask);
+
+        uint64_t* m_ptr = reinterpret_cast<uint64_t*>(&mask);
+        for (size_t block = 0; block < num_blocks; ++block)
+        {
+            uint8_t* b_ptr = reinterpret_cast<uint8_t*>(&m_ptr[block]);
+            for (size_t i = 0; i < 8; ++i)
+            {
+                frame_flags[block].push_back(b_ptr[i]);
+            }
+        }
+        if (type == BIT_FRAMETYPE_DELTA || type == BIT_FRAMETYPE_KEYFRAME)
+        {
+            size_t byte_idx = 0;
+            for (size_t block = 0; block < num_blocks; ++block)
+            {
+                for(size_t bit = 0; bit < 64; ++bit)
+                {
+                    if (m_ptr[block] & (1ULL << bit))
+                    {
+                        if (ptr < end)
+                        {
+                            frame_data[byte_idx].push_back(*ptr++);
+                        }
+                    }
+                    if (++byte_idx >= sizeof(krp_frame))
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        else if (type == BIT_FRAMETYPE_EVENT)
+        {
         }
     }
 
-    memcpy(buffer, &mask, sizeof(mask));
-    fwrite(buffer, offset, 1, fp);
+    krp_header header;
+    memcpy(&header, src.data(), sizeof(krp_header));
+    header.size_types = static_cast<uint32_t>(frame_type.size());
+    header.size_flags = static_cast<uint32_t>(frame_flags[0].size() + frame_flags[1].size());
+    header.size_data  = 0;
+    for (size_t i = 0; i < sizeof(krp_frame); ++i)
+    {
+        header.size_data += static_cast<uint32_t>(frame_data[i].size());
+    }
+
+    std::vector<uint8_t> result;
+    result.reserve(src.size());
+
+    // Result: [header][frametype_1][frametype_N]...[flags_1][flags_N]...[data_1][data_N]
+    uint8_t* h_ptr = reinterpret_cast<uint8_t*>(&header);
+    result.insert(result.end(), h_ptr, h_ptr + sizeof(header));
+    result.insert(result.end(), frame_type.begin(), frame_type.end());
+    result.insert(result.end(), frame_flags[0].begin(), frame_flags[0].end());
+    result.insert(result.end(), frame_flags[1].begin(), frame_flags[1].end());
+
+    for (size_t i = 0; i < sizeof(krp_frame); ++i)
+    {
+        if (!frame_data[i].empty())
+        {
+            result.insert(result.end(), frame_data[i].begin(), frame_data[i].end());
+        }
+    }
+    return result;
+}
+static FILE* kz_rp_compress_file(const char* file)
+{
+    FILE* fp = fopen(file, "rb");
+    if (!fp) 
+    {
+        return nullptr;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    size_t src_size = ftell(fp);
+    rewind(fp);
+
+    std::vector<char> src_buffer(src_size);
+    size_t read_bytes = fread(src_buffer.data(), 1, src_size, fp);
+    fclose(fp);
+
+    if (read_bytes != src_size)
+    {
+        return nullptr;
+    }
+
+    size_t max_dst_size = ZSTD_compressBound(src_size);
+    std::vector<char> dst_buffer(max_dst_size);
+    std::vector<uint8_t> r_buffer = kz_rp_reorganize_data(src_buffer);
+
+    int c_level = static_cast<int>(kz_api_replays_clevel->value); 
+    size_t compressed_size = ZSTD_compress(dst_buffer.data(), max_dst_size, r_buffer.data(), r_buffer.size(), c_level);
+
+    if (ZSTD_isError(compressed_size))
+    {
+        kz_log(&g_replay_upload_log, "[ZSTD] Compression failed: %s", ZSTD_getErrorName(compressed_size));
+        return nullptr;
+    }
+
+    char compressed_path[256];
+    snprintf(compressed_path, sizeof(compressed_path), "%s", file);
+    compressed_path[strlen(file) - 1] = 'z'; // .krpr -> .krpz
+
+    FILE* out_fp = fopen(compressed_path, "wb+");
+    if (!out_fp)
+    {
+        return nullptr;
+    }
+
+    fwrite(dst_buffer.data(), 1, compressed_size, out_fp);
+    rewind(out_fp);
+    return out_fp;
+
 }
 static void kz_rp_writer_thread(void)
 {
@@ -367,15 +501,16 @@ static void kz_rp_writer_thread(void)
                 {
                     if (s_fd[id])
                     {
-                        // TODO: add zstd for ultra compression ??
-                        // TODO: write in chunks, less io
+                        // TODO: write in chunks, less i/o
                         if (!s_counter[id])
                         {
                             // We write a full frame (no delta) when the run just started or got unpaused (savepos)
+                            kz_rp_write_frametype(s_fd[id], s_curr, BIT_FRAMETYPE_KEYFRAME);
                             kz_rp_write_keyframe(s_fd[id], s_curr);
                         }
                         else
                         {
+                            kz_rp_write_frametype(s_fd[id], s_curr, BIT_FRAMETYPE_DELTA);
                             kz_rp_write_delta(s_fd[id], s_curr, &s_last[id]);
                         }
                         memcpy(&s_last[id], s_curr, sizeof(s_last[0]));
@@ -455,15 +590,16 @@ static void kz_rp_writer_thread(void)
                         snprintf(uid_str, sizeof(uid_str), "%s_%s", sig->steamid, ts_str);
 
                         std::filesystem::path npath = g_data_dir / "replays" / mapname / uid_str;
-                        snprintf(new_path, sizeof(new_path), "%s.krp_c", npath.c_str());
+                        snprintf(new_path, sizeof(new_path), "%s.krpr", npath.c_str());
 
                         fclose(s_fd[id]);
                         s_fd[id] = nullptr;
 
+
                         if (rename(s_filepath[id], new_path) == 0)
                         {
                             kz_storage_save(uid_str, kz_storage_get_next_id(StorageTable::replay_up_queue), StorageTable::replay_up_queue);
-                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s.krp_c", uid_str);
+                            kz_log(&g_replay_writer_log, "[KRP] Saved raw replay: %s.krpr", uid_str);
                         }
                         else
                         {
@@ -520,10 +656,11 @@ static void kz_rp_upload_thread(void)
     {
         while (ws_upload_replay* item = g_replay_upload_queue.front())
         {
-            FILE* fp = fopen(item->filepath, "rb");
+            // Lazy compression
+            FILE* fp = kz_rp_compress_file(item->filepath);
             if (!fp)
             {
-                kz_log(&g_replay_upload_log, "[Upload] fopen failure:", strerror(errno));
+                kz_log(&g_replay_upload_log, "[Upload] Compression/Open failure:", strerror(errno));
                 g_replay_upload_queue.pop();
                 continue;
             }

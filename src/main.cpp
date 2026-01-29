@@ -48,6 +48,8 @@ void FN_AMXX_ATTACH()
     kz_api_log_send = register_cvar("kz_api_log_send", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_log_recv = register_cvar("kz_api_log_recv", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_log_upload = register_cvar("kz_api_log_upload", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
+
+    kz_api_replays_clevel = register_cvar("kz_api_replays_clevel", "10", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_add_natives();
 }
 void FN_AMXX_PLUGINSLOADED()

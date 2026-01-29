@@ -167,16 +167,16 @@ void kz_ws_ack_add_record(JSON_Object* obj)
      const char* local_uid = json_object_dotget_string(obj, "data.local_uid");
      upload.rec_id = json_object_dotget_number(obj, "data.rec_id");
 
-     std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / STRING(gpGlobals->mapname) / local_uid;
-     replay.replace_extension(".krp_c");
+     std::filesystem::path replay = g_data_dir / "replays" / STRING(gpGlobals->mapname) / local_uid;
+     replay.replace_extension(".krpr");
 
      snprintf(upload.filepath, sizeof(upload.filepath), "%s", replay.c_str());
      snprintf(upload.local_uid, sizeof(upload.local_uid), "%s", local_uid);
 
      if (std::filesystem::exists(replay) && std::filesystem::is_regular_file(replay))
      {
-         kz_log(nullptr, "[WS] Starting upload of replay: %s", replay.c_str());
-         kz_rp_upload_async(upload);
+         kz_log(nullptr, "[WS] Starting compression/upload of replay: %s", replay.c_str());
+         kz_rp_compress_and_upload_async(upload);
      }
      else
      {

@@ -13,6 +13,7 @@ extern cvar_t* kz_api_token;
 extern cvar_t* kz_api_log_send;
 extern cvar_t* kz_api_log_recv;
 extern cvar_t* kz_api_log_upload;
+extern cvar_t* kz_api_replays_clevel;
 
 extern const pr_cvar_t g_server_cvars[];
 extern const size_t g_server_cvars_size;

@@ -47,6 +47,7 @@ cvar_t* kz_api_token    = nullptr;
 cvar_t* kz_api_log_send = nullptr;
 cvar_t* kz_api_log_recv = nullptr;
 cvar_t* kz_api_log_upload = nullptr;
+cvar_t* kz_api_replays_clevel = nullptr;
 
 char g_prev_api_url[64];
 char g_prev_api_token[64];

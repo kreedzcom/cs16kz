@@ -72,6 +72,7 @@ target_link_libraries(${PROJECT_NAME}
     ssl
     crypto
     z
+    zstd
     pthread
     dl
     -m32
