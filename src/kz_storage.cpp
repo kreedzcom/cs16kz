@@ -42,7 +42,7 @@ void kz_storage_init(void)
         try
         {
             std::filesystem::path file = g_data_dir / KZ_DATABASE_PATH / "storage.sq3";
-            kz_storage_database = new SQLite::Database(file.c_str(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+            kz_storage_database = new SQLite::Database(file.string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
             kz_storage_database->exec("PRAGMA journal_mode=WAL;");
             kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT NOT NULL)");
             kz_storage_database->exec("CREATE TABLE IF NOT EXISTS replay_up_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, fs_uid TEXT NOT NULL)");

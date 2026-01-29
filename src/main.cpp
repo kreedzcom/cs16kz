@@ -141,7 +141,7 @@ void FN_CvarValue2(const edict_t* pEdict, int requestId, const char* cvar, const
 
 /* This never gets called and i dont know why. Tried without rehlds/regamedll installed */
 /* Maybe it works on amxmodx <= 1.8.2 (not tested) */
-void FN_Cvar_DirectSet_Post(struct cvar_s *var, char *value) 
+void FN_Cvar_DirectSet_Post(struct cvar_s *var, const char *value) 
 {
     if(!var || !value || FStrEq(var->string, value))
     {

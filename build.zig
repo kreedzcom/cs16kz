@@ -212,10 +212,11 @@ pub fn build(b: *std.Build) !void
 	{
 		lib.root_module.addCMacro("WIN32", "");
 		lib.root_module.addCMacro("_WINDOWS", "");
-		// lib.linkSystemLibrary("curl.dll");
-		// lib.linkSystemLibrary("shlwapi");
-		// lib.linkSystemLibrary("imm32");
-		// lib.linkSystemLibrary("gdi32");
+		// HACK to get windows build to work
+		lib.root_module.addCMacro("CBASE_DLLEXPORT", "__declspec(dllexport)");
+		lib.linkSystemLibrary("ws2_32");
+		lib.linkSystemLibrary("mswsock");
+		lib.linkSystemLibrary("crypt32");
 	}
 	else if (target.result.os.tag == .linux)
 	{
@@ -262,6 +263,20 @@ pub fn build(b: *std.Build) !void
 	lib.addIncludePath(dep_spscqueue.path("include"));
 	lib.linkLibCpp();
 	
+	const cflagsBase = [_][]const u8{
+		"-std=c++17",
+		"-Wno-incompatible-pointer-types", // TODO: fix problems instead of disabling warning lol
+	};
+	var cflags = std.ArrayList([]const u8).empty;
+	try cflags.appendSlice(b.allocator, &cflagsBase);
+	
+	if (target.result.os.tag == .windows)
+	{
+		// HACK to get windows build to work
+		try cflags.append(b.allocator, "-Wno-macro-redefined");
+		try cflags.append(b.allocator, "-fpermissive");
+	}
+	
 	lib.addCSourceFiles(.{
 		.root = b.path("src/"),
 		.files = &.{
@@ -277,10 +292,7 @@ pub fn build(b: *std.Build) !void
 			"main.cpp",
 			"mod_rehlds_api.cpp",
 		},
-		.flags = &.{
-			"-std=c++17",
-			"-Wno-incompatible-pointer-types", // TODO: fix problems instead of disabling warning lol
-		},
+		.flags = cflags.items,
 	});
 	b.installArtifact(lib);
 }

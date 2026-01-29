@@ -2365,7 +2365,7 @@ C_DLLEXPORT __declspec(naked) void GiveFnptrsToDll( enginefuncs_t* pengfuncsFrom
 #else	// _MSC_VER
 #ifdef __GNUC__
 // GCC can also work with this
-C_DLLEXPORT void __stdcall GiveFnptrsToDll( enginefuncs_t* pengfuncsFromEngine, globalvars_t *pGlobals )
+C_DLLEXPORT void GiveFnptrsToDll( enginefuncs_t* pengfuncsFromEngine, globalvars_t *pGlobals )
 {
 #else	// __GNUC__
 // compiler not known
