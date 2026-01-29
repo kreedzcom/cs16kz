@@ -210,6 +210,18 @@ pub fn build(b: *std.Build) !void
 	
 	if (target.result.os.tag == .windows)
 	{
+		if (comptime builtin.target.os.tag != .windows)
+		{
+			// Fixes windows cross compilation on linux.
+			//  Amxmodx uses #include "Windows.h" like IDIOTS, so we
+			//  must copy the windows.h file capitalised style, because windows's filesystem
+			//  is case sensitive, while linux's (ext4 etc) are not.
+			const windows_h_path = b.pathJoin(&[_][]const u8{std.fs.path.dirname(b.graph.zig_exe) orelse unreachable, "lib/libc/include/any-windows-any/windows.h"});
+			var writeFile = b.addWriteFiles();
+			_ = writeFile.addCopyFile(.{.cwd_relative = windows_h_path}, "Windows.h");
+			lib.addIncludePath(writeFile.getDirectory());
+		}
+		
 		lib.root_module.addCMacro("WIN32", "");
 		lib.root_module.addCMacro("_WINDOWS", "");
 		// HACK to get windows build to work
