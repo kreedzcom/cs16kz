@@ -190,7 +190,7 @@ pub fn build(b: *std.Build) !void
 	// the lib!!!!
 	
 	const lib = b.addLibrary(.{
-		.name = "kz_global_api_amxx_i386",
+		.name = if (target.result.os.tag == .linux) "kz_global_api_amxx_i386" else "kz_global_api_amxx",
 		.linkage = .dynamic,
 		.root_module = b.createModule(.{
 			.target = target,
