@@ -254,6 +254,7 @@ pub fn build(b: *std.Build) !void
 		lib.linkSystemLibrary("ssl");
 		lib.linkSystemLibrary("crypto");
 		lib.linkSystemLibrary("z");
+		lib.linkSystemLibrary("zstd");
 		lib.linkSystemLibrary("pthread");
 		lib.linkSystemLibrary("dl");
 	}
@@ -278,6 +279,8 @@ pub fn build(b: *std.Build) !void
 	const cflagsBase = [_][]const u8{
 		"-std=c++17",
 		"-Wno-incompatible-pointer-types", // TODO: fix problems instead of disabling warning lol
+		"-fno-sanitize=pointer-overflow", // fix for STRING() hlsdk macro
+		"-fsanitize-recover=undefined",   // dont crash :)
 	};
 	var cflags = std.ArrayList([]const u8).empty;
 	try cflags.appendSlice(b.allocator, &cflagsBase);
