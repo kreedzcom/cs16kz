@@ -51,6 +51,7 @@ void FN_AMXX_ATTACH()
 
     kz_api_replays_clevel = register_cvar("kz_api_replays_clevel", "10", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_add_natives();
+    kz_log_init(std::this_thread::get_id());
 }
 void FN_AMXX_PLUGINSLOADED()
 {
@@ -75,7 +76,6 @@ void FN_AMXX_PLUGINSLOADED()
     {
         g_initialiazed = true;
 
-        kz_log_init(std::this_thread::get_id());
         kz_storage_init();
         kz_ws_init();
         kz_rp_init();
