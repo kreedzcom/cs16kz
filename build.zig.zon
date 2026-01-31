@@ -60,6 +60,10 @@
             .url = "https://github.com/alliedmodders/hlsdk/archive/a0edb7792a96998d349325bebab8ea41ec5cb239.zip",
             .hash = "N-V-__8AALcxbwExhJLZEQxtAfIwX_TbORfZZIqGX0ZGk3c9",
         },
+        .zstd = .{
+            .url = "git+https://github.com/allyourcodebase/zstd.git?ref=1.5.7-1#e1a501be57f42c541e8a5597e4b59a074dfd09a3",
+            .hash = "zstd-1.5.7-1-KEItkAMwAAD6OKY3m0OOmXG7aL-aLUfrDqbP5J5oYapU",
+        },
     },
     .paths = .{
         "build.zig",

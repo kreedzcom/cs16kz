@@ -91,6 +91,14 @@ pub fn build(b: *std.Build) !void
 	
 	const dep_mbedtls_c = dep_mbedtls.builder.dependency("mbedtls", .{});
 	
+	// zstd
+	const dep_zstd = b.dependency("zstd", .{
+		.target = target,
+		.optimize = .ReleaseFast,
+	});
+	
+	// const dep_zstd_c = dep_mbedtls.builder.dependency("zstd", .{});
+	
 	// ixwebsocket
 	
 	const dep_ixwebsocket = b.dependency("ixwebsocket", .{
@@ -207,6 +215,7 @@ pub fn build(b: *std.Build) !void
 	lib.linkLibrary(parson);
 	lib.linkLibrary(sqlitecpp);
 	lib.linkLibrary(ixwebsocket);
+	lib.linkLibrary(dep_zstd.artifact("zstd"));
 	
 	if (target.result.os.tag == .windows)
 	{
@@ -254,7 +263,6 @@ pub fn build(b: *std.Build) !void
 		lib.linkSystemLibrary("ssl");
 		lib.linkSystemLibrary("crypto");
 		lib.linkSystemLibrary("z");
-		lib.linkSystemLibrary("zstd");
 		lib.linkSystemLibrary("pthread");
 		lib.linkSystemLibrary("dl");
 	}
@@ -262,6 +270,7 @@ pub fn build(b: *std.Build) !void
 	lib.addIncludePath(b.path("deps/sdk/amxmodx/public/resdk"));
 	lib.addIncludePath(b.path("deps/sdk/amxmodx/public"));
 	lib.addIncludePath(b.path("src/include"));
+	lib.addIncludePath(dep_zstd.path("lib"));
 	lib.addIncludePath(dep_ixwebsocket.path(""));
 	lib.addIncludePath(dep_metamod.path("metamod"));
 	lib.addIncludePath(dep_hlsdk.path(""));
