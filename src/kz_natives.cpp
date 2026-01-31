@@ -8,13 +8,46 @@
 #include "kz_storage.h"
 #include "kz_natives.h"
 
+static inline int validate_params(AMX* amx, cell* params, int min_params)
+{
+    int total_params = (params[0] / sizeof(cell));
+    if (total_params < min_params)
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Expected at least %d params, got %d", min_params, total_params);
+        return 0;
+    }
+    return 1;
+}
+static inline int validate_player(AMX* amx, int id) 
+{
+    if (id < 1 || id > gpGlobals->maxClients)
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Invalid player index %d", id);
+        return 0;
+    }
+    if (!MF_IsPlayerIngame(id))
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Player not in-game");
+        return 0;
+    }
+    if (MF_IsPlayerBot(id)) 
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Bots can't make records!");
+        return 0;
+    }
+    if (!MF_IsPlayerAlive(id)) 
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Player not alive");
+        return 0;
+    }
+    return id;
+}
+
 /* native kz_api_get_map_details(mapname[], handler[]); */
 static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
 {
-    int num_params = (params[0] / sizeof(cell));
-    if (num_params < 2)
+    if (!validate_params(amx, params, 2))
     {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Exepected at least 2 params, got %d", num_params);
         return 0;
     }
 
@@ -47,174 +80,86 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
 /* native kz_api_run_started(id) */
 static cell AMX_NATIVE_CALL kz_api_run_started(AMX* amx, cell* params)
 {
-    int num_params = (params[0] / sizeof(cell));
-    if (num_params < 1)
+    if (!validate_params(amx, params, 1))
     {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Expected at least 1 param, got %d", num_params);
         return 0;
     }
 
-    int id = params[1];
-    if (id < 0 || id > gpGlobals->maxClients)
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Invalid player index %d", id);
-        return 0;
-    }
-    if (!MF_IsPlayerIngame(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not in-game");
-        return 0;
-    }
-    if (MF_IsPlayerBot(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Bots can't make records !");
-        return 0;
-    }
-    if (!MF_IsPlayerAlive(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not alive");
-        return 0;
-    }
-    kz_rp_run_started(id);
-    return 1;
+    int id = validate_player(amx, params[1]);;
+    return (id ? kz_rp_run_started(id) : 0);
 }
+
+/* native kz_api_run_checkpoint(id) */
+static cell AMX_NATIVE_CALL kz_api_run_checkpoint(AMX* amx, cell* params)
+{
+    if (!validate_params(amx, params, 1))
+    {
+        return 0;
+    }
+
+    int id = validate_player(amx, params[1]);;
+    return (id ? kz_rp_run_checkpoint(id) : 0);
+}
+
+/* native kz_api_run_gocheck(id) */
+static cell AMX_NATIVE_CALL kz_api_run_gocheck(AMX* amx, cell* params)
+{
+    if (!validate_params(amx, params, 1))
+    {
+        return 0;
+    }
+
+    int id = validate_player(amx, params[1]);;
+    return (id ? kz_rp_run_gocheck(id) : 0);
+}
+
 /* native kz_api_run_paused(id) */
 static cell AMX_NATIVE_CALL kz_api_run_paused(AMX* amx, cell* params)
 {
-    int num_params = (params[0] / sizeof(cell));
-    if (num_params < 1)
+    if (!validate_params(amx, params, 1))
     {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Expected at least 1 param, got %d", num_params);
         return 0;
     }
 
-    int id = params[1];
-    if (id < 0 || id > gpGlobals->maxClients)
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Invalid player index %d", id);
-        return 0;
-    }
-    if (!MF_IsPlayerIngame(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not in-game");
-        return 0;
-    }
-    if (MF_IsPlayerBot(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Bots can't make records !");
-        return 0;
-    }
-    if (!MF_IsPlayerAlive(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not alive");
-        return 0;
-    }
-    kz_rp_run_paused(id);
-    return 1;
+    int id = validate_player(amx, params[1]);;
+    return (id ? kz_rp_run_paused(id) : 0);
 }
 
 /* native kz_api_run_unpaused(id) */
 static cell AMX_NATIVE_CALL kz_api_run_unpaused(AMX* amx, cell* params)
 {
-    int num_params = (params[0] / sizeof(cell));
-    if (num_params < 1)
+    if (!validate_params(amx, params, 1))
     {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Expected at least 1 param, got %d", num_params);
         return 0;
     }
 
-    int id = params[1];
-    if (id < 0 || id > gpGlobals->maxClients)
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Invalid player index %d", id);
-        return 0;
-    }
-    if (!MF_IsPlayerIngame(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not in-game");
-        return 0;
-    }
-    if (MF_IsPlayerBot(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Bots can't make records !");
-        return 0;
-    }
-    if (!MF_IsPlayerAlive(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not alive");
-        return 0;
-    }
-    kz_rp_run_unpaused(id);
-    return 1;
+    int id = validate_player(amx, params[1]);;
+    return (id ? kz_rp_run_unpaused(id) : 0);
 }
+
 /* native kz_api_run_rejected(id, bool:delete_file) */
 static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
 {
-    int num_params = (params[0] / sizeof(cell));
-    if (num_params < 2)
+    if (!validate_params(amx, params, 2))
     {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Expected at least 2 params, got %d", num_params);
         return 0;
     }
 
-    int id = params[1];
-    if (id < 0 || id > gpGlobals->maxClients)
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Invalid player index %d", id);
-        return 0;
-    }
-    if (!MF_IsPlayerIngame(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not in-game");
-        return 0;
-    }
-    if (MF_IsPlayerBot(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Bots can't make records !");
-        return 0;
-    }
-    if (!MF_IsPlayerAlive(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not alive");
-        return 0;
-    }
-    kz_rp_run_rejected(id, static_cast<bool>(params[2]));
-    return 1;
+    int id = validate_player(amx, params[1]);;
+    return (id ? kz_rp_run_rejected(id, static_cast<bool>(params[2])) : 0);
 }
 /* native kz_api_run_finished(id, Float:time) */
 static cell AMX_NATIVE_CALL kz_api_run_finished(AMX* amx, cell* params)
 {
-    int num_params = (params[0] / sizeof(cell));
-    if (num_params < 2)
+    if (!validate_params(amx, params, 2))
     {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Expected at least 2 params, got %d", num_params);
         return 0;
     }
 
-    int id = params[1];
-    if (id < 0 || id > gpGlobals->maxClients)
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Invalid player index %d", id);
-        return 0;
-    }
-    if (!MF_IsPlayerIngame(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not in-game");
-        return 0;
-    }
-    if (MF_IsPlayerBot(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Bots can't make records !");
-        return 0;
-    }
-    if (!MF_IsPlayerAlive(id))
-    {
-        MF_LogError(amx, AMX_ERR_NATIVE, "Player is not alive");
-        return 0;
-    }
-    kz_rp_run_finished(id, amx_ctof(params[2]));
-    return 1;
+    int id = validate_player(amx, params[1]);;
+    return (id ? kz_rp_run_finished(id, amx_ctof(params[2])) : 0);
 }
+
 static cell AMX_NATIVE_CALL kz_api_del_record(AMX* amx, cell* params)
 {
     MF_LogError(amx, AMX_ERR_NATIVE, "Not implemented.");
@@ -231,6 +176,8 @@ AMX_NATIVE_INFO kz_api_natives[] =
 {
     {"kz_api_get_map_details",  kz_api_get_map_details},
     {"kz_api_run_started",      kz_api_run_started},
+    {"kz_api_run_checkpoint",   kz_api_run_checkpoint},
+    {"kz_api_run_gocheck",      kz_api_run_gocheck},
     {"kz_api_run_paused",       kz_api_run_paused},
     {"kz_api_run_unpaused",     kz_api_run_unpaused},
     {"kz_api_run_rejected",     kz_api_run_rejected},

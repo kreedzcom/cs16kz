@@ -44,7 +44,7 @@ extern std::filesystem::path g_data_dir;
 #define CHUNK_SIZE (64*1024) // 64KB
 
 
-void kz_rp_run_started(int id) 
+int kz_rp_run_started(int id) 
 {
     krp_packet item = {0};
     item.player_index = id;
@@ -60,27 +60,62 @@ void kz_rp_run_started(int id)
     remove_substring(sig->steamid, ":");
 
     g_current_frame[id].player_index = id;
-    if(!g_replay_writer_queue.try_push(item))
+    if (!g_replay_writer_queue.try_push(item))
     {
         kz_log(nullptr, "[KRP] The queue is full");
+        return 0;
     }
+    return 1;
 }
-void kz_rp_run_teleport(int id)
+int kz_rp_run_checkpoint(int id)
 {
-    // TODO:...
+    krp_packet item = {0};
+    item.player_index = id;
+    item.type = KRP_SIGNAL_EVENT;
+
+    krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
+    sig->event = KRP_EVENT_TYPE_CHECKPOINT;
+
+    g_current_frame[id].player_index = id;
+    if (!g_replay_writer_queue.try_push(item))
+    {
+        kz_log(nullptr, "[KRP] The queue is full");
+        return 0;
+    }
+    return 1;
 }
-void kz_rp_run_paused(int id)
+int kz_rp_run_gocheck(int id)
+{
+    krp_packet item = {0};
+    item.player_index = id;
+    item.type = KRP_SIGNAL_EVENT;
+
+    krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
+    sig->event = KRP_EVENT_TYPE_GOCHECK;
+
+    g_current_frame[id].player_index = id;
+    if (!g_replay_writer_queue.try_push(item))
+    {
+        kz_log(nullptr, "[KRP] The queue is full");
+        return 0;
+    }
+    return 1;
+}
+int kz_rp_run_paused(int id)
 {
     krp_packet item = {0};
     item.player_index = id;
     item.type = KRP_SIGNAL_PAUSE;
 
+    g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
     {
         kz_log(nullptr, "[KRP] The queue is full");
+        return 0;
     }
+    return 1;
 }
-void kz_rp_run_unpaused(int id)
+int kz_rp_run_unpaused(int id)
 {
     krp_packet item = {0};
     item.player_index = id;
@@ -100,7 +135,7 @@ void kz_rp_run_unpaused(int id)
         kz_log(nullptr, "[KRP] The queue is full");
     }
 }
-void kz_rp_run_rejected(int id, bool delete_file)
+int kz_rp_run_rejected(int id, bool delete_file)
 {
     krp_packet item = {0};
     item.player_index = id;
@@ -109,13 +144,16 @@ void kz_rp_run_rejected(int id, bool delete_file)
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
     sig->delete_file = true;
 
+    g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
     {
         kz_log(nullptr, "[KRP] The queue is full");
+        return 0;
     }
+    return 1;
 }
 
-void kz_rp_run_finished(int id, float time)
+int kz_rp_run_finished(int id, float time)
 {
     krp_packet item = {0};
     item.player_index = id;
@@ -130,10 +168,13 @@ void kz_rp_run_finished(int id, float time)
     remove_substring(sig->steamid, ":");
     remove_substring(sig->steamid, ":");
 
+    g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
     {
         kz_log(nullptr, "[KRP] The queue is full");
+        return 0;
     }
+    return 1;
 }
 /***************************************************************************************************************/
 /***************************************************************************************************************/
@@ -186,7 +227,20 @@ void kz_rp_uninit()
 void kz_rp_set_cmd(int id, const usercmd_t* cmd)
 {
     krp_frame* frame = reinterpret_cast<krp_frame*>(g_current_frame[id].data);
-    memcpy(&frame->cmd, cmd, sizeof(frame->cmd));
+    frame->cmd.lerp_msec        = cmd->lerp_msec;
+    frame->cmd.msec             = cmd->msec;
+    frame->cmd.viewangles       = cmd->viewangles;
+
+    frame->cmd.forwardmove      = cmd->forwardmove;
+    frame->cmd.sidemove         = cmd->sidemove;
+    frame->cmd.upmove           = cmd->upmove;
+    frame->cmd.lightlevel       = cmd->lightlevel;
+    frame->cmd.buttons          = cmd->buttons;
+    frame->cmd.impulse          = cmd->impulse;
+    frame->cmd.weaponselect     = cmd->weaponselect;
+
+    frame->cmd.impact_index     = cmd->impact_index;
+    frame->cmd.impact_position  = cmd->impact_position;
 }
 void kz_rp_set_vars(int id, const entvars_t* vars)
 {
@@ -269,6 +323,8 @@ static void kz_rp_write_frametype(FILE* fp, krp_packet* curr, uint8_t frametype)
 }
 static void kz_rp_write_event(FILE* fp, krp_packet* curr)
 {
+    krp_signal* sig = reinterpret_cast<krp_signal*>(curr->data);
+    fwrite(&sig->event, sizeof(sig->event), 1, fp);
 }
 static void kz_rp_write_keyframe(FILE* fp, krp_packet* curr)
 {
@@ -492,9 +548,13 @@ static void kz_rp_writer_thread(void)
                     s_counter[id] = 0;
                     break;
                 }
-                case KRP_SIGNAL_TELEPORT:
+                case KRP_SIGNAL_EVENT:
                 {
-                    // TODO:...
+                    if (s_fd[id])
+                    {
+                        kz_rp_write_frametype(s_fd[id], s_curr, BIT_FRAMETYPE_EVENT);
+                        kz_rp_write_event(s_fd[id], s_curr);
+                    }
                     break;
                 }
                 case KRP_SIGNAL_FRAME:

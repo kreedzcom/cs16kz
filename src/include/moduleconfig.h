@@ -500,7 +500,7 @@
 // #define FN_DeltaUnsetFieldByIndex_Post		DeltaUnsetFieldByIndex_Post
 // #define FN_SetGroupMask_Post					SetGroupMask_Post
 // #define FN_engCreateInstancedBaseline_Post	engCreateInstancedBaseline_Post
-#define FN_Cvar_DirectSet_Post				Cvar_DirectSet_Post
+// #define FN_Cvar_DirectSet_Post				Cvar_DirectSet_Post
 // #define FN_ForceUnmodified_Post				ForceUnmodified_Post
 // #define FN_GetPlayerStats_Post				GetPlayerStats_Post
 // #define FN_AddServerCommand_Post				AddServerCommand_Post

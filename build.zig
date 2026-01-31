@@ -194,7 +194,34 @@ pub fn build(b: *std.Build) !void
 	
 	// hlsdk
 	const dep_hlsdk = b.dependency("hlsdk", .{});
-	
+
+	// memtools (amxx)
+	const memtools = b.addLibrary(.{
+		.name = "memtools",
+		.root_module = b.createModule(.{
+			.target = target,
+			.optimize = .ReleaseFast,
+			.link_libc = true,
+		}),
+	});
+
+	memtools.addIncludePath(b.path("deps/sdk/amxmodx/public"));
+	if (target.result.os.tag == .windows)
+	{
+		memtools.root_module.addCMacro("WIN32", "");
+	}
+	memtools.addCSourceFiles(.{
+		.files = &.{
+			"deps/sdk/amxmodx/public/memtools/MemoryUtils.cpp",
+			"deps/sdk/amxmodx/public/memtools/CDetour/detours.cpp",
+		},
+		.flags = &.{"-std=c++11", "-Wno-register"}
+	});
+	memtools.addCSourceFiles(.{.files = &.{"deps/sdk/amxmodx/public/memtools/CDetour/asm/asm.c"}});
+
+	memtools.linkLibC();
+	memtools.linkLibCpp();
+
 	// the lib!!!!
 	
 	const lib = b.addLibrary(.{
@@ -215,6 +242,7 @@ pub fn build(b: *std.Build) !void
 	lib.linkLibrary(parson);
 	lib.linkLibrary(sqlitecpp);
 	lib.linkLibrary(ixwebsocket);
+	lib.linkLibrary(memtools);
 	lib.linkLibrary(dep_zstd.artifact("zstd"));
 	
 	if (target.result.os.tag == .windows)

@@ -1,5 +1,9 @@
 #include "amxxmodule.h"
+#include "common/hookchains.h"
 #include "resdk/mod_rehlds_api.h"
+
+#include "IGameConfigs.h"
+#include "memtools/CDetour/detours.h"
 
 #include "pdata.h"
 #include "kz_ws.h"
@@ -16,9 +20,42 @@ edict_t* g_pEdicts = nullptr;
 bool g_initialiazed = false;
 std::filesystem::path g_data_dir;
 
-void RH_Cvar_DirectSet(IRehldsHook_Cvar_DirectSet* chain, cvar_t* var, const char* value);
-void KZ_Cvar_DirectSet(const char* const varname, const char* const value);
+void (*Cvar_DirectSet_Actual)(cvar_t* var, const char* value);
 
+void RH_Cvar_DirectSet(IRehldsHook_Cvar_DirectSet* chain, cvar_t* var, const char* value);
+void DT_Cvar_DirectSet(cvar_t* var, const char* value);
+void KZ_Cvar_DirectSet(cvar_t* var, const char* value, IRehldsHook_Cvar_DirectSet* chain);
+
+static bool kz_init_hooks(void)
+{
+    if (RehldsApi_Init())
+    {
+        RehldsHookchains->Cvar_DirectSet()->registerHook(RH_Cvar_DirectSet, HC_PRIORITY_UNINTERRUPTABLE);
+        return true;
+    }
+
+    // We are supposed to unhook and destroy for cleanup but..
+    // This module is not intended to be reloaded or unloaded in the 1st place, so we dont care
+
+    IGameConfigManager* ConfigManager = MF_GetConfigManager();
+    IGameConfig* CommonConfig = nullptr;
+    char error[256] = {0};
+
+    if (!ConfigManager || !ConfigManager->LoadGameConfigFile("common.games", &CommonConfig, error, sizeof(error)) || error[0] != '\0')
+    {
+        return false;
+    }
+
+    CDetour* detour_Cvar_DirectSet = nullptr;
+    void* address = nullptr;
+    if (CommonConfig && CommonConfig->GetMemSig("Cvar_DirectSet", &address) && address)
+    {
+        detour_Cvar_DirectSet = CDetourManager::CreateDetour((void*)&DT_Cvar_DirectSet, (void**)&Cvar_DirectSet_Actual, address);
+        detour_Cvar_DirectSet->EnableDetour();
+        return true;
+    }
+    return false;
+}
 /***************************************************************************************************************/
 /***************************************************************************************************************/
 int FN_AMXX_CHECKGAME(const char* game)
@@ -28,11 +65,6 @@ int FN_AMXX_CHECKGAME(const char* game)
 
 void FN_AMXX_ATTACH()
 {
-    if (RehldsApi_Init())
-    {
-        RehldsHookchains->Cvar_DirectSet()->registerHook(RH_Cvar_DirectSet, HC_PRIORITY_UNINTERRUPTABLE);
-    }
-
     g_pEdicts = (*g_engfuncs.pfnPEntityOfEntIndex)(0);
     
     kz_ws_register(WSMessageType::invalid,     kz_ws_ack_invalid);
@@ -53,36 +85,27 @@ void FN_AMXX_ATTACH()
 
     kz_api_replays_clevel = register_cvar("kz_api_replays_clevel", "10", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_add_natives();
-    kz_log_init(std::this_thread::get_id());
 }
 void FN_AMXX_PLUGINSLOADED()
 {
     g_data_dir = std::filesystem::path("cstrike") / MF_GetLocalInfo("amxx_datadir", "addons/amxmodx/data") / "kz_global";
-    if (!std::filesystem::exists(g_data_dir))
-    {
-        std::error_code ec;
-        if(std::filesystem::create_directories(g_data_dir, ec))
-        {
-            kz_log(nullptr, "Directory created: %s", g_data_dir.c_str());
-        }
-        else
-        {
-            kz_log(nullptr, "Failed to create directory (%s): %s", g_data_dir.c_str(), ec.message().c_str());
-        }
-    }
-
-    kz_rp_update_header();
-    kz_api_add_forwards();
 
     if (!g_initialiazed)
     {
+        if (!kz_init_hooks())
+        {
+            MF_Log("?????");
+            *((char *) NULL) = 0;
+        }
         g_initialiazed = true;
 
+        kz_log_init(std::this_thread::get_id());
         kz_storage_init();
         kz_ws_init();
         kz_rp_init();
     }
-
+    kz_rp_update_header();
+    kz_api_add_forwards();
 }
 void FN_META_DETACH()
 {
@@ -138,21 +161,6 @@ void FN_CvarValue2(const edict_t* pEdict, int requestId, const char* cvar, const
     kz_qqc_handler(pEdict, requestId, cvar, value);
     RETURN_META(MRES_IGNORED);
 }
-
-/* This never gets called and i dont know why. Tried without rehlds/regamedll installed */
-/* Maybe it works on amxmodx <= 1.8.2 (not tested) */
-void FN_Cvar_DirectSet_Post(struct cvar_s *var, const char *value) 
-{
-    if(!var || !value || FStrEq(var->string, value))
-    {
-        RETURN_META(MRES_IGNORED);
-    }
-    if(!g_rehlds_available)
-    {
-        KZ_Cvar_DirectSet(var->name, value);
-    }
-    RETURN_META(MRES_IGNORED);
-}
 /***************************************************************************************************************/
 /***************************************************************************************************************/
 void FN_CmdStart(const edict_t* player, const struct usercmd_s* cmd, unsigned int random_seed)
@@ -201,28 +209,33 @@ BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* ps
 /***************************************************************************************************************/
 void RH_Cvar_DirectSet(IRehldsHook_Cvar_DirectSet* chain, cvar_t* var, const char* value)
 {
-    if (!var || !value || FStrEq(var->string, value))
-    {
-        chain->callNext(var, value);
-        return;
-    }
-    chain->callNext(var, value);
-    KZ_Cvar_DirectSet(var->name, value);
+    KZ_Cvar_DirectSet(var, value, chain);
+}
+void DT_Cvar_DirectSet(struct cvar_s *var, const char *value) 
+{
+    KZ_Cvar_DirectSet(var, value, nullptr);
 }
 /***************************************************************************************************************/
 /***************************************************************************************************************/
-void KZ_Cvar_DirectSet(const char* const varname, const char* const value)
+void KZ_Cvar_DirectSet(cvar_t* var, const char* const value, IRehldsHook_Cvar_DirectSet* chain)
 {
+    if (!var || !value || FStrEq(var->name, value))
+    {
+        (chain) ? chain->callNext(var, value) : Cvar_DirectSet_Actual(var, value);
+        return;
+    }
+    (chain) ? chain->callNext(var, value) : Cvar_DirectSet_Actual(var, value);
+
     for (size_t i = 0; i < g_server_cvars_size; ++i)
     {
-        if (FStrEq(varname, g_server_cvars[i].name) && !FStrEq(value, g_server_cvars[i].expected_value))
+        if (FStrEq(var->name, g_server_cvars[i].name) && !FStrEq(value, g_server_cvars[i].expected_value))
         {
-            MF_Log("Illegal cvar value: %s %s", varname, value);
-            CVAR_SET_STRING(varname, g_server_cvars[i].expected_value);
+            MF_Log("Illegal cvar value: %s %s", var->name, value);
+            CVAR_SET_STRING(var->name, g_server_cvars[i].expected_value);
             return;
         }
     }
-    if (!FStrEq(varname, kz_api_url->name) && !FStrEq(varname, kz_api_token->name))
+    if (!FStrEq(var->name, kz_api_url->name) && !FStrEq(var->name, kz_api_token->name))
     {
         return;
     }
