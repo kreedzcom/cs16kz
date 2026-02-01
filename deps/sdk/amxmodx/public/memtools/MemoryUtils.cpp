@@ -156,7 +156,7 @@ void *MemoryUtils::ResolveSymbol(void *handle, const char *symbol)
 {
 #if defined(WIN32)
 
-	return GetProcAddress((HMODULE)handle, symbol);
+	return reinterpret_cast<void*>(GetProcAddress((HMODULE)handle, symbol));
 	
 #elif defined(__linux__)
 
