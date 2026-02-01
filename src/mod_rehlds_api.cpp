@@ -1,4 +1,4 @@
-
+#include "amxxmodule.h"
 #include "mod_rehlds_api.h"
 
 IRehldsApi*          RehldsApi;
@@ -28,8 +28,14 @@ bool RehldsApi_Init()
 	const auto majorVersion = RehldsApi->GetMajorVersion();
 	const auto minorVersion = RehldsApi->GetMinorVersion();
 
-	if (majorVersion != REHLDS_API_VERSION_MAJOR || minorVersion < REHLDS_API_VERSION_MINOR)
+	if (majorVersion != REHLDS_API_VERSION_MAJOR)
 	{
+		MF_Log("ReHLDS: Api major version mismatch; expected %d, real %d", REHLDS_API_VERSION_MAJOR, majorVersion);
+		return false;
+	}
+	if (minorVersion < REHLDS_API_VERSION_MINOR)
+	{
+		MF_Log("ReHLDS: Api minor version mismatch; expected at least %d, real %d", REHLDS_API_VERSION_MINOR, minorVersion);
 		return false;
 	}
 

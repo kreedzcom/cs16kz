@@ -2,7 +2,8 @@
 #include "common/hookchains.h"
 #include "resdk/mod_rehlds_api.h"
 
-#include "IGameConfigs.h"
+#include "amtl/os/am-shared-library.h"
+#include "memtools/MemoryUtils.h"
 #include "memtools/CDetour/detours.h"
 
 #include "pdata.h"
@@ -20,42 +21,10 @@ edict_t* g_pEdicts = nullptr;
 bool g_initialiazed = false;
 std::filesystem::path g_data_dir;
 
+bool kz_init_rehooks(void);
+bool kz_init_detours(void);
+
 void (*Cvar_DirectSet_Actual)(cvar_t* var, const char* value);
-
-void RH_Cvar_DirectSet(IRehldsHook_Cvar_DirectSet* chain, cvar_t* var, const char* value);
-void DT_Cvar_DirectSet(cvar_t* var, const char* value);
-void KZ_Cvar_DirectSet(cvar_t* var, const char* value, IRehldsHook_Cvar_DirectSet* chain);
-
-static bool kz_init_hooks(void)
-{
-    if (RehldsApi_Init())
-    {
-        RehldsHookchains->Cvar_DirectSet()->registerHook(RH_Cvar_DirectSet, HC_PRIORITY_UNINTERRUPTABLE);
-        return true;
-    }
-
-    // We are supposed to unhook and destroy for cleanup but..
-    // This module is not intended to be reloaded or unloaded in the 1st place, so we dont care
-
-    IGameConfigManager* ConfigManager = MF_GetConfigManager();
-    IGameConfig* CommonConfig = nullptr;
-    char error[256] = {0};
-
-    if (!ConfigManager || !ConfigManager->LoadGameConfigFile("common.games", &CommonConfig, error, sizeof(error)) || error[0] != '\0')
-    {
-        return false;
-    }
-
-    CDetour* detour_Cvar_DirectSet = nullptr;
-    void* address = nullptr;
-    if (CommonConfig && CommonConfig->GetMemSig("Cvar_DirectSet", &address) && address)
-    {
-        detour_Cvar_DirectSet = CDetourManager::CreateDetour((void*)&DT_Cvar_DirectSet, (void**)&Cvar_DirectSet_Actual, address);
-        detour_Cvar_DirectSet->EnableDetour();
-        return true;
-    }
-    return false;
-}
 /***************************************************************************************************************/
 /***************************************************************************************************************/
 int FN_AMXX_CHECKGAME(const char* game)
@@ -92,10 +61,12 @@ void FN_AMXX_PLUGINSLOADED()
 
     if (!g_initialiazed)
     {
-        if (!kz_init_hooks())
+        if (!kz_init_rehooks() && !kz_init_detours())
         {
-            MF_Log("?????");
-            *((char *) NULL) = 0;
+            //for(;;) {}
+            SERVER_COMMAND("meta unload kz_global_api\n");
+            SERVER_EXECUTE();
+            return;
         }
         g_initialiazed = true;
 
@@ -207,16 +178,6 @@ BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* ps
 }
 /***************************************************************************************************************/
 /***************************************************************************************************************/
-void RH_Cvar_DirectSet(IRehldsHook_Cvar_DirectSet* chain, cvar_t* var, const char* value)
-{
-    KZ_Cvar_DirectSet(var, value, chain);
-}
-void DT_Cvar_DirectSet(struct cvar_s *var, const char *value) 
-{
-    KZ_Cvar_DirectSet(var, value, nullptr);
-}
-/***************************************************************************************************************/
-/***************************************************************************************************************/
 void KZ_Cvar_DirectSet(cvar_t* var, const char* const value, IRehldsHook_Cvar_DirectSet* chain)
 {
     if (!var || !value || FStrEq(var->name, value))
@@ -250,4 +211,54 @@ void KZ_Cvar_DirectSet(cvar_t* var, const char* const value, IRehldsHook_Cvar_Di
     }
     kz_ws_start(kz_api_url->string, kz_api_token->string);
     return;
+}
+/***************************************************************************************************************/
+/***************************************************************************************************************/
+void RH_Cvar_DirectSet(IRehldsHook_Cvar_DirectSet* chain, cvar_t* var, const char* value)
+{
+    KZ_Cvar_DirectSet(var, value, chain);
+}
+void DT_Cvar_DirectSet(struct cvar_s *var, const char *value) 
+{
+    KZ_Cvar_DirectSet(var, value, nullptr);
+}
+/***************************************************************************************************************/
+/***************************************************************************************************************/
+bool kz_init_rehooks(void)
+{
+    if (RehldsApi_Init())
+    {
+        RehldsHookchains->Cvar_DirectSet()->registerHook(RH_Cvar_DirectSet, HC_PRIORITY_UNINTERRUPTABLE);
+        return true;
+    }
+    return false;
+}
+bool kz_init_detours(void)
+{
+    IGameConfigManager* ConfigManager = MF_GetConfigManager();
+    IGameConfig* CommonConfig = nullptr;
+
+    if (!ConfigManager)
+    {
+        MF_Log("ERROR: AMX Mod X 1.8.2 is not supported - live with it and upgrade...");
+        return false;
+    }
+
+    char error[256] = {0};
+    if (!ConfigManager->LoadGameConfigFile("common.games", &CommonConfig, error, sizeof(error)) || error[0] != '\0')
+    {
+        MF_Log("ERROR: common.games gamedata could not be read: %s", error);
+        return false;
+    }
+
+    void* address = nullptr;
+    if (!CommonConfig->GetMemSig("Cvar_DirectSet", &address) || !address)
+    {
+        MF_Log("ERROR: Failed to find \"Cvar_DirectSet\" function");
+        return false;
+    }
+
+    CDetour* detour_Cvar_DirectSet = CDetourManager::CreateDetour((void*)&DT_Cvar_DirectSet, (void**)&Cvar_DirectSet_Actual, address);
+    detour_Cvar_DirectSet->EnableDetour();
+    return true;
 }

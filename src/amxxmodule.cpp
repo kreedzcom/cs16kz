@@ -2332,12 +2332,20 @@ C_DLLEXPORT int Meta_Detach(PLUG_LOADTIME now, PL_UNLOAD_REASON reason)
 	return TRUE;
 }
 
-C_DLLEXPORT void GiveFnptrsToDll(enginefuncs_t* pengfuncsFromEngine, globalvars_t *pGlobals)
+#ifdef _WIN32
+C_DLLEXPORT void WINAPI GiveFnptrsToDll(enginefuncs_t* pengfuncsFromEngine, globalvars_t *pGlobals) __asm__("_GiveFnptrsToDll");
+void WINAPI GiveFnptrsToDll(enginefuncs_t* pengfuncsFromEngine, globalvars_t *pGlobals)
 {
 	memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
 	gpGlobals = pGlobals;
 }
-
+#else
+C_DLLEXPORT void GiveFnptrsToDll(enginefuncs_t* pengfuncsFromEngine, globalvars_t *pGlobals) 
+{
+	memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
+	gpGlobals = pGlobals;
+}
+#endif
 #endif	// #ifdef USE_METAMOD
 
 /************* AMXX Stuff *************/
