@@ -1,6 +1,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const zcc = @import("compile_commands");
 const assert = std.debug.assert;
 
 pub fn build(b: *std.Build) !void
@@ -346,5 +347,10 @@ pub fn build(b: *std.Build) !void
 		},
 		.flags = cflags.items,
 	});
+
+        var cdb_targets = std.ArrayListUnmanaged(*std.Build.Step.Compile){};
+        try cdb_targets.append(b.allocator, lib);
+        _ = zcc.createStep(b, "cdb", try cdb_targets.toOwnedSlice(b.allocator));
+
 	b.installArtifact(lib);
 }

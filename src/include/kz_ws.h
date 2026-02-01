@@ -1,7 +1,7 @@
 #ifndef KZ_WS_H
 #define KZ_WS_H
 
-#include <parson/parson.h>
+#include "parson.h"
 #include <rigtorp/SPSCQueue.h>
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
