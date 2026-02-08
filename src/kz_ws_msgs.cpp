@@ -2,6 +2,7 @@
 #include "resdk/mod_rehlds_api.h"
 
 #include "pdata.h"
+#include "kz_player.h"
 #include "kz_ws.h"
 #include "kz_util.h"
 #include "kz_cvars.h"
@@ -66,19 +67,15 @@ void kz_ws_event_client_connect(edict_t* pEntity)
 {
     int id = indexOfEdict(pEntity);
 
-    char szIP[16];
-    const char* authid = GETPLAYERAUTHID(pEntity);
-    split_net_address(MF_GetPlayerIP(id), szIP, sizeof(szIP), nullptr, 0);
-
     JSON_Value* data_val = json_value_init_object();
     JSON_Object* data_obj = json_value_get_object(data_val);
 
     std::string message;
     int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
-    json_object_set_string(data_obj, "nickname", MF_GetPlayerName(id));
-    json_object_set_string(data_obj, "ipaddr", szIP);
-    json_object_set_string(data_obj, "steamid", authid);
+    json_object_set_string(data_obj, "nickname", g_players[id].nickname);
+    json_object_set_string(data_obj, "ipaddr", g_players[id].ipaddr);
+    json_object_set_string(data_obj, "steamid", g_players[id].steamid);
 
     kz_ws_build_msg(WSMessageType::client_info, data_val, message, msg_id);
     kz_storage_save(message, msg_id, StorageTable::outgoing_queue);

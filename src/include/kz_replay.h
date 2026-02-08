@@ -50,7 +50,7 @@ typedef struct
 } krp_entvars;
 
 typedef struct  {
-    char steamid[35];
+    char steamid_short[35];
     char nickname[32];
     union {
         bool delete_file;

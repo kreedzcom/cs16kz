@@ -7,6 +7,7 @@
 #include "memtools/CDetour/detours.h"
 
 #include "pdata.h"
+#include "kz_player.h"
 #include "kz_ws.h"
 #include "kz_util.h"
 #include "kz_cvars.h"
@@ -18,6 +19,7 @@
 #include <filesystem>
 
 edict_t* g_pEdicts = nullptr;
+player_t g_players[33];
 bool g_initialiazed = false;
 std::filesystem::path g_data_dir;
 
@@ -172,6 +174,20 @@ BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* ps
         {
             CLIENT_COMMAND(pEntity, (char*)"%s %s\n", g_player_cvars[i].name, g_player_cvars[i].expected_value);
         }
+
+        char szIP[16];
+        const char* szAuth = GETPLAYERAUTHID(pEntity);
+        split_net_address(pszAddress, szIP, sizeof(szIP), nullptr, 0);
+
+        snprintf(g_players[id].nickname, sizeof(g_players[0].nickname), "%s", pszName);
+        snprintf(g_players[id].ipaddr, sizeof(g_players[0].ipaddr), "%s", szIP);
+        snprintf(g_players[id].steamid, sizeof(g_players[0].steamid), "%s", szAuth);
+
+        snprintf(g_players[id].steamid_short, sizeof(g_players[0].steamid_short), "%s", szAuth);
+        remove_substring(g_players[id].steamid_short, "STEAM_");
+        remove_substring(g_players[id].steamid_short, ":");
+        remove_substring(g_players[id].steamid_short, ":");
+
         kz_ws_event_client_connect(pEntity);
     }
     RETURN_META_VALUE(MRES_IGNORED, TRUE);

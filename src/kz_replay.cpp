@@ -1,6 +1,7 @@
 #include "amxxmodule.h"
 
 #include "pdata.h"
+#include "kz_player.h"
 #include "kz_ws.h"
 #include "kz_util.h"
 #include "kz_cvars.h"
@@ -52,12 +53,8 @@ int kz_rp_run_started(int id)
     
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
     sig->ts = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    snprintf(sig->steamid, sizeof(sig->steamid), "%s", GETPLAYERAUTHID(edictByIndex(id)));
-    snprintf(sig->nickname, sizeof(sig->nickname), "%s", MF_GetPlayerName(id));
-
-    remove_substring(sig->steamid, "STEAM_");
-    remove_substring(sig->steamid, ":");
-    remove_substring(sig->steamid, ":");
+    snprintf(sig->steamid_short, sizeof(sig->steamid_short), "%s", g_players[id].steamid_short);
+    snprintf(sig->nickname, sizeof(sig->nickname), "%s", g_players[id].nickname);
 
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
@@ -122,12 +119,8 @@ int kz_rp_run_unpaused(int id)
     item.type = KRP_SIGNAL_UNPAUSE;
 
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
-    snprintf(sig->steamid, sizeof(sig->steamid), "%s", GETPLAYERAUTHID(edictByIndex(id)));
-    snprintf(sig->nickname, sizeof(sig->nickname), "%s", MF_GetPlayerName(id));
-
-    remove_substring(sig->steamid, "STEAM_");
-    remove_substring(sig->steamid, ":");
-    remove_substring(sig->steamid, ":");
+    snprintf(sig->steamid_short, sizeof(sig->steamid_short), "%s", g_players[id].steamid_short);
+    snprintf(sig->nickname, sizeof(sig->nickname), "%s", g_players[id].steamid_short);
 
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
@@ -161,12 +154,8 @@ int kz_rp_run_finished(int id, float time)
 
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
     sig->time = time;
-    snprintf(sig->steamid, sizeof(sig->steamid), "%s", GETPLAYERAUTHID(edictByIndex(id)));
-    snprintf(sig->nickname, sizeof(sig->nickname), "%s", MF_GetPlayerName(id));
-
-    remove_substring(sig->steamid, "STEAM_");
-    remove_substring(sig->steamid, ":");
-    remove_substring(sig->steamid, ":");
+    snprintf(sig->steamid_short, sizeof(sig->steamid_short), "%s", g_players[id].steamid_short);
+    snprintf(sig->nickname, sizeof(sig->nickname), "%s", g_players[id].nickname);
 
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
@@ -531,9 +520,9 @@ static void kz_rp_writer_thread(void)
 
                     header.timestamp = sig->ts;
 
-                    std::filesystem::path path = g_data_dir / "replays" / mapname / sig->steamid;
+                    std::filesystem::path path = g_data_dir / "replays" / mapname / sig->steamid_short;
                     snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.c_str());
-                    snprintf(header.player.steamid, sizeof(header.player.steamid), "%s", sig->steamid);
+                    snprintf(header.player.steamid, sizeof(header.player.steamid), "STEAM_%c:%c:%s", sig->steamid_short[0], sig->steamid_short[1], sig->steamid_short + 2);
 
                     s_fd[id] = fopen(s_filepath[id], "wb+");
                     if (s_fd[id])
@@ -596,7 +585,7 @@ static void kz_rp_writer_thread(void)
                     krp_signal* sig     = reinterpret_cast<krp_signal*>(s_curr->data);
                     const char* mapname = g_header.map.name;
 
-                    std::filesystem::path path = g_data_dir / "replays" / mapname / sig->steamid;
+                    std::filesystem::path path = g_data_dir / "replays" / mapname / sig->steamid_short;
                     snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.c_str());
 
                     if (s_fd[id])
@@ -647,7 +636,7 @@ static void kz_rp_writer_thread(void)
                         char uid_str[32];
                         char ts_str[16];
                         to_base36(kz_rp_timestamp_from_header(s_fd[id]), ts_str, sizeof(ts_str));
-                        snprintf(uid_str, sizeof(uid_str), "%s_%s", sig->steamid, ts_str);
+                        snprintf(uid_str, sizeof(uid_str), "%s_%s", sig->steamid_short, ts_str);
 
                         std::filesystem::path npath = g_data_dir / "replays" / mapname / uid_str;
                         snprintf(new_path, sizeof(new_path), "%s.krpr", npath.c_str());
@@ -671,7 +660,7 @@ static void kz_rp_writer_thread(void)
                         JSON_Object* data_obj = json_value_get_object(data_val);
 
                         char steamid[35];
-                        snprintf(steamid, sizeof(steamid), "STEAM_%c:%c:%s", sig->steamid[0], sig->steamid[1], sig->steamid + 2);
+                        snprintf(steamid, sizeof(steamid), "STEAM_%c:%c:%s", sig->steamid_short[0], sig->steamid_short[1], sig->steamid_short + 2);
 
                         json_object_dotset_string(data_obj, "player.nickname", sig->nickname);
                         json_object_dotset_string(data_obj, "player.steamid", steamid);
