@@ -21,7 +21,6 @@
 edict_t* g_pEdicts = nullptr;
 player_t g_players[33];
 bool g_initialiazed = false;
-std::filesystem::path g_data_dir;
 
 bool kz_init_rehooks(void);
 bool kz_init_detours(void);

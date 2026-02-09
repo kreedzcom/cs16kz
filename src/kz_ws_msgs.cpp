@@ -20,7 +20,6 @@
         } \
     } while(0)
 
-extern std::filesystem::path g_data_dir;
 WSMessageFunc g_callback_table[ectoi(WSMessageType::_MAX)];
 
 void kz_ws_run_tasks(int max_tasks_per_frame)

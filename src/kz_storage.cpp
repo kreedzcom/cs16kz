@@ -13,8 +13,11 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 
-extern std::filesystem::path g_data_dir;
-static const char* KZ_DATABASE_PATH = "sqlite3";
+std::filesystem::path g_data_dir;
+std::mutex g_storage_mutex;
+
+std::vector<retry_msg> g_retry_queue(64);
+
 static thread_local SQLite::Database* kz_storage_database = nullptr;
 static thread_local bool kz_storage_initialiazed = false;
 static thread_local kz::queue<std::string> g_storage_log(64);
@@ -25,7 +28,7 @@ void kz_storage_init(void)
     {
         kz_log_addq(&g_storage_log);
 
-        std::filesystem::path dir = g_data_dir / KZ_DATABASE_PATH;
+        std::filesystem::path dir = g_data_dir / "sqlite3";
         if (!std::filesystem::exists(dir))
         {
             std::error_code ec;
@@ -41,11 +44,11 @@ void kz_storage_init(void)
         }
         try
         {
-            std::filesystem::path file = g_data_dir / KZ_DATABASE_PATH / "storage.sq3";
+            std::filesystem::path file = g_data_dir / "sqlite3" / "storage.sq3";
             kz_storage_database = new SQLite::Database(file.string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
             kz_storage_database->exec("PRAGMA journal_mode=WAL;");
-            kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT NOT NULL)");
-            kz_storage_database->exec("CREATE TABLE IF NOT EXISTS replay_up_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, fs_uid TEXT NOT NULL)");
+            kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+            kz_storage_database->exec("CREATE TABLE IF NOT EXISTS replay_up_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, fs_uid TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
             kz_storage_database->setBusyTimeout(5000);
 
             kz_storage_initialiazed = true;
@@ -70,7 +73,7 @@ int64_t kz_storage_get_next_id(StorageTable table)
 {
     try
     {
-        char statement[256];
+        char statement[64];
         switch(table)
         {
             case StorageTable::outgoing_queue:
@@ -100,9 +103,15 @@ int64_t kz_storage_get_next_id(StorageTable table)
 }
 void kz_storage_save(const std::string& text, int64_t msg_id, StorageTable table)
 {
+    {
+        std::lock_guard<std::mutex> lock(g_storage_mutex);
+        
+        auto now = std::chrono::system_clock::now();
+        g_retry_queue.push_back({msg_id, text, std::chrono::system_clock::to_time_t(now), table});
+    }
     try
     {
-        char statement[256];
+        char statement[1024];
         switch(table)
         {
             case StorageTable::outgoing_queue:
@@ -128,9 +137,13 @@ void kz_storage_save(const std::string& text, int64_t msg_id, StorageTable table
 }
 void kz_storage_delete(int64_t msg_id, StorageTable table)
 {
+    {
+        // TODO: deletion from retry queue
+        std::lock_guard<std::mutex> lock(g_storage_mutex);
+    }
     try
     {
-        char statement[256];
+        char statement[64];
         switch(table)
         {
             case StorageTable::outgoing_queue:
@@ -144,7 +157,7 @@ void kz_storage_delete(int64_t msg_id, StorageTable table)
                 break;
             }
         }
-        SQLite::Statement query(*kz_storage_database, "DELETE FROM outgoing_queue WHERE id = ?");
+        SQLite::Statement query(*kz_storage_database, statement);
         query.bind(1, static_cast<long long>(msg_id));
         query.exec();
     }

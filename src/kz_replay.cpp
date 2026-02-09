@@ -40,8 +40,6 @@ static std::thread g_replay_upload_thread;
 static void kz_rp_writer_thread(void);
 static void kz_rp_upload_thread(void);
 
-extern std::filesystem::path g_data_dir;
-
 #define CHUNK_SIZE (64*1024) // 64KB
 
 
