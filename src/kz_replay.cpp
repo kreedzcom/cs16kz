@@ -126,7 +126,9 @@ int kz_rp_run_unpaused(int id)
     if (!g_replay_writer_queue.try_push(item))
     {
         kz_log(nullptr, "[KRP] The queue is full");
+        return 0;
     }
+    return 1;
 }
 int kz_rp_run_rejected(int id, bool delete_file)
 {
@@ -324,7 +326,7 @@ static void kz_rp_write_keyframe(FILE* fp, krp_packet* curr)
 static void kz_rp_write_delta(FILE* fp, krp_packet* curr, krp_packet* last)
 {
     krp_mask mask = {0};
-    size_t size = sizeof(krp_frame);
+    const size_t size = sizeof(krp_frame);
 
     uint8_t buffer[size];
     size_t idx = 0;
@@ -332,7 +334,7 @@ static void kz_rp_write_delta(FILE* fp, krp_packet* curr, krp_packet* last)
     uint8_t* pCurr = reinterpret_cast<uint8_t*>(curr->data); // krp_frame
     uint8_t* pLast = reinterpret_cast<uint8_t*>(last->data); // krp_frame
 
-    uint64_t* pMask  = reinterpret_cast<uint64_t*>(&mask);
+    uint8_t* pMask  = reinterpret_cast<uint8_t*>(&mask);
     uint8_t diff = 0;
     size_t block = 0;
     size_t bit = 0;
@@ -342,8 +344,8 @@ static void kz_rp_write_delta(FILE* fp, krp_packet* curr, krp_packet* last)
         diff = pCurr[i] ^ pLast[i];
         if (diff != 0)
         {
-            block = (i / 64);
-            bit = (i & 63);
+            block = (i / 8);
+            bit = (i & 7);
 
             pMask[block] |= (1ULL << bit);
             buffer[idx++] = diff;
@@ -374,29 +376,29 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
         krp_mask mask;
         memcpy(&mask, ptr, sizeof(krp_mask)); ptr += sizeof(krp_mask);
 
-        uint64_t* m_ptr = reinterpret_cast<uint64_t*>(&mask);
+        uint8_t* m_ptr = reinterpret_cast<uint8_t*>(&mask);
         for (size_t block = 0; block < num_blocks; ++block)
         {
-            uint8_t* b_ptr = reinterpret_cast<uint8_t*>(&m_ptr[block]);
             for (size_t i = 0; i < 8; ++i)
             {
-                frame_flags[block].push_back(b_ptr[i]);
+                frame_flags[block].push_back(m_ptr[block * 8 + i]);
             }
         }
         if (type == BIT_FRAMETYPE_DELTA || type == BIT_FRAMETYPE_KEYFRAME)
         {
             size_t byte_idx = 0;
-            for (size_t block = 0; block < num_blocks; ++block)
+            for (size_t i = 0; i < sizeof(krp_mask) && byte_idx < sizeof(krp_frame); ++i)
             {
-                for(size_t bit = 0; bit < 64; ++bit)
+                for (size_t bit = 0; bit < 8; ++bit)
                 {
-                    if (m_ptr[block] & (1ULL << bit))
+                    if (m_ptr[i] & (1 << bit))
                     {
                         if (ptr < end)
                         {
                             frame_data[byte_idx].push_back(*ptr++);
                         }
                     }
+
                     if (++byte_idx >= sizeof(krp_frame))
                     {
                         break;
@@ -412,8 +414,13 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
     krp_header header;
     memcpy(&header, src.data(), sizeof(krp_header));
     header.size_types = static_cast<uint32_t>(frame_type.size());
-    header.size_flags = static_cast<uint32_t>(frame_flags[0].size() + frame_flags[1].size());
+    header.size_flags = 0;
     header.size_data  = 0;
+
+    for (size_t i = 0; i < num_blocks; ++i)
+    {
+        header.size_flags += static_cast<uint32_t>(frame_flags[i].size());
+    }
     for (size_t i = 0; i < sizeof(krp_frame); ++i)
     {
         header.size_data += static_cast<uint32_t>(frame_data[i].size());
@@ -426,9 +433,11 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
     uint8_t* h_ptr = reinterpret_cast<uint8_t*>(&header);
     result.insert(result.end(), h_ptr, h_ptr + sizeof(header));
     result.insert(result.end(), frame_type.begin(), frame_type.end());
-    result.insert(result.end(), frame_flags[0].begin(), frame_flags[0].end());
-    result.insert(result.end(), frame_flags[1].begin(), frame_flags[1].end());
 
+    for (size_t i = 0; i < num_blocks; ++i)
+    {
+        result.insert(result.end(), frame_flags[i].begin(), frame_flags[i].end());
+    }
     for (size_t i = 0; i < sizeof(krp_frame); ++i)
     {
         if (!frame_data[i].empty())
