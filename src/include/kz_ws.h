@@ -38,12 +38,14 @@ namespace kz {
     template <typename T> using queue = rigtorp::SPSCQueue<T>;
 };
 
-typedef void (*WSMessageFunc)(JSON_Object*);
+typedef std::function<void()> (*WSMessageFunc)(JSON_Object*);
+extern WSMessageFunc g_callback_table[];
 
 extern kz::websocket g_websocket;
 extern std::atomic<WSState> g_websocket_state;
+extern kz::queue<std::string> g_ws_log;
 extern kz::queue<std::string> g_outgoing_queue;
-extern kz::queue<JSON_Value*> g_incoming_queue;
+extern kz::queue<std::function<void()>> g_incoming_queue;
 
 extern void kz_ws_init(void);
 extern void kz_ws_uninit(void);
@@ -59,17 +61,17 @@ extern void kz_ws_run_tasks(int max_jobs_per_frame);
 extern void kz_ws_register(WSMessageType type, WSMessageFunc pfn);
 extern void kz_ws_event_client_connect(edict_t* pEntity);
 
-extern void kz_ws_ack_invalid(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_invalid(JSON_Object* obj);
 
-extern void kz_ws_ack_hello(JSON_Object* obj);
-extern void kz_ws_ack_map_info(JSON_Object* obj);
-extern void kz_ws_ack_client_info(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_hello(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_map_info(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_client_info(JSON_Object* obj);
 
-extern void kz_ws_ack_add_record(JSON_Object* obj);
-extern void kz_ws_ack_del_record(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_add_record(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_del_record(JSON_Object* obj);
 
-extern void kz_ws_ack_add_replay(JSON_Object* obj);
-extern void kz_ws_ack_get_replay(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_add_replay(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj);
 
 template <typename T> constexpr int ectoi(T ec) { return static_cast<int>(ec); }
 #endif

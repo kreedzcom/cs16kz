@@ -5,6 +5,7 @@
 #include "kz_util.h"
 #include "kz_cvars.h"
 #include "kz_storage.h"
+#include <chrono>
 
 std::string g_hello_msg;
 kz::websocket g_websocket;
@@ -12,7 +13,7 @@ std::atomic<WSState> g_websocket_state;
 
 kz::queue<std::string> g_ws_log(64);
 kz::queue<std::string> g_outgoing_queue(64);
-kz::queue<JSON_Value*> g_incoming_queue(64);
+kz::queue<std::function<void()>> g_incoming_queue(64);
 
 static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
 {
@@ -41,26 +42,42 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
                 break;
             }
 
-            int64_t msg_id = json_object_get_number(json_value_get_object(root_val), "msg_id");
-            auto start_time = std::chrono::steady_clock::now();
+            JSON_Object* root_obj = json_value_get_object(root_val);
+            int32_t msg_type = json_object_get_number(root_obj, "msg_type");
+            int64_t msg_id = json_object_get_number(root_obj, "msg_id");
 
-            while(!g_incoming_queue.try_push(root_val))
+            std::function<void()> fn = nullptr;
+            if (msg_type <= 0 || msg_type >= ectoi(WSMessageType::_MAX))
             {
-                auto curr_time = std::chrono::steady_clock::now();
-                auto elapsed   = std::chrono::duration_cast<std::chrono::seconds>(curr_time - start_time).count();
-
-                if(elapsed >= 30)
-                {
-                    kz_log(&g_ws_log, "[WS] Dropped message: %s", c_data);
-                    json_value_free(root_val);
-                    break;
-                }
-                std::this_thread::yield();
+                fn = g_callback_table[ectoi(WSMessageType::invalid)](root_obj);
             }
-            if(msg_id > 0)
+            else
+            {
+                fn = g_callback_table[msg_type](root_obj);
+            }
+
+            bool delete_msg = true;
+            if (fn)
+            {
+                auto start_time = std::chrono::steady_clock::now();
+                while (!g_incoming_queue.try_push(std::move(fn)))
+                {
+                    auto curr_time = std::chrono::steady_clock::now();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(curr_time - start_time).count();
+                    if (elapsed >= 10)
+                    {
+                        delete_msg = false;
+                        kz_log(&g_ws_log, "[WS] Incoming queue is full");
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                }
+            }
+            if (delete_msg && msg_id > 0)
             {
                 kz_storage_delete(msg_id, StorageTable::outgoing_queue);
             }
+            json_value_free(root_val);
             break;
         }
         case ix::WebSocketMessageType::Ping:
