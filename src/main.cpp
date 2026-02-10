@@ -78,6 +78,7 @@ void FN_AMXX_PLUGINSLOADED()
     }
     kz_rp_update_header();
     kz_api_add_forwards();
+    kz_storage_load();
 }
 void FN_META_DETACH()
 {

@@ -14,8 +14,8 @@
 
 
 std::filesystem::path g_data_dir;
-std::mutex g_storage_mutex;
 
+std::mutex g_retry_mtx;
 std::vector<retry_msg> g_retry_queue(64);
 
 static thread_local SQLite::Database* kz_storage_database = nullptr;
@@ -42,22 +42,21 @@ void kz_storage_init(void)
                 return;
             }
         }
-        try
-        {
-            std::filesystem::path file = g_data_dir / "sqlite3" / "storage.sq3";
-            kz_storage_database = new SQLite::Database(file.string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
-            kz_storage_database->exec("PRAGMA journal_mode=WAL;");
-            kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
-            kz_storage_database->exec("CREATE TABLE IF NOT EXISTS replay_up_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, fs_uid TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
-            kz_storage_database->setBusyTimeout(5000);
+    }
+    try
+    {
+        std::filesystem::path file = g_data_dir / "sqlite3" / "storage.sq3";
+        kz_storage_database = new SQLite::Database(file.string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+        kz_storage_database->exec("PRAGMA journal_mode=WAL;");
+        kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+        kz_storage_database->exec("CREATE TABLE IF NOT EXISTS replay_up_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, fs_uid TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+        kz_storage_database->setBusyTimeout(5000);
 
-            kz_storage_initialiazed = true;
-        }
-        catch (const std::exception& e)
-        {
-            kz_log(&g_storage_log, "[Storage] init: %s", e.what());
-
-        }
+        kz_storage_initialiazed = true;
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] init: %s", e.what());
     }
 }
 void kz_storage_uninit(void)
@@ -69,12 +68,56 @@ void kz_storage_uninit(void)
         kz_storage_initialiazed = false;
     }
 }
+void kz_storage_load()
+{
+    // TODO: add from db to retry_queue
+}
+void kz_storage_clear()
+{
+    std::lock_guard<std::mutex> lock(g_retry_mtx);
+    if (g_retry_queue.empty())
+    {
+        return;
+    }
+
+    std::vector<int64_t> delete_list[2];
+    auto it = g_retry_queue.begin();
+    while (it != g_retry_queue.end())
+    {
+        bool delete_msg = false;
+        if (it->msg_type == ectoi(WSMessageType::map_info) || it->msg_type == ectoi(WSMessageType::client_info))
+        {
+            delete_msg = true;
+        }
+        if (it->msg_type == ectoi(WSMessageType::map_info))
+        {
+            auto p = g_plugin_callbacks.find(it->msg_id);
+            if (p != g_plugin_callbacks.end())
+            {
+                MF_UnregisterSPForward(p->second.fwd);
+                g_plugin_callbacks.erase(p);
+            }
+        }
+        if (delete_msg)
+        {
+            delete_list[ectoi(it->table)].push_back(it->msg_id);
+            it = g_retry_queue.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    kz_storage_batch_delete(delete_list[0], StorageTable::outgoing_queue);
+    kz_storage_batch_delete(delete_list[1], StorageTable::replay_up_queue);
+}
+
 int64_t kz_storage_get_next_id(StorageTable table)
 {
     try
     {
         char statement[64];
-        switch(table)
+        switch (table)
         {
             case StorageTable::outgoing_queue:
             {
@@ -101,18 +144,20 @@ int64_t kz_storage_get_next_id(StorageTable table)
     }
     return 1;
 }
-void kz_storage_save(const std::string& text, int64_t msg_id, StorageTable table)
+void kz_storage_save(const std::string& text, int32_t msg_type, int64_t msg_id, StorageTable table)
 {
     {
-        std::lock_guard<std::mutex> lock(g_storage_mutex);
+        std::lock_guard<std::mutex> lock(g_retry_mtx);
         
         auto now = std::chrono::system_clock::now();
-        g_retry_queue.push_back({msg_id, text, std::chrono::system_clock::to_time_t(now), table});
+        auto ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+        g_retry_queue.push_back({0, msg_type, msg_id, ts, table, text});
     }
     try
     {
         char statement[1024];
-        switch(table)
+        switch (table)
         {
             case StorageTable::outgoing_queue:
             {
@@ -138,13 +183,21 @@ void kz_storage_save(const std::string& text, int64_t msg_id, StorageTable table
 void kz_storage_delete(int64_t msg_id, StorageTable table)
 {
     {
-        // TODO: deletion from retry queue
-        std::lock_guard<std::mutex> lock(g_storage_mutex);
+        std::lock_guard<std::mutex> lock(g_retry_mtx);
+
+        auto rif = std::remove_if(g_retry_queue.begin(), g_retry_queue.end(),
+                [msg_id, table](const retry_msg& r) {
+                    return r.msg_id == msg_id && r.table == table;
+                });
+        if (rif != g_retry_queue.end())
+        {
+            g_retry_queue.erase(rif, g_retry_queue.end());
+        }
     }
     try
     {
         char statement[64];
-        switch(table)
+        switch (table)
         {
             case StorageTable::outgoing_queue:
             {
@@ -164,5 +217,45 @@ void kz_storage_delete(int64_t msg_id, StorageTable table)
     catch (const std::exception& e)
     {
         kz_log(&g_storage_log, "[Storage] delete: %s", e.what());
+    }
+}
+void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table)
+{
+    if(ids.empty())
+    {
+        return;
+    }
+    try
+    {
+        char statement[4096];
+        int written = 0;
+
+        switch (table)
+        {
+            case StorageTable::outgoing_queue:
+            {
+                written = snprintf(statement, sizeof(statement), "DELETE FROM outgoing_queue WHERE id IN (");
+                break;
+            }
+            case StorageTable::replay_up_queue:
+            {
+                written = snprintf(statement, sizeof(statement), "DELETE FROM replay_up_queue WHERE id IN (");
+                break;
+            }
+        }
+
+        char* ptr = statement + written;
+        size_t remaining = sizeof(statement) - written;
+        for (size_t i = 0; i < ids.size(); ++i)
+        {
+            int n = snprintf(ptr, remaining, "%lld%s", static_cast<long long>(ids[i]), (i == ids.size() - 1) ? ")":",");
+            ptr += n;
+            remaining -= n;
+        }
+        kz_storage_database->exec(statement);
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] batch delete: %s", e.what());
     }
 }

@@ -654,7 +654,7 @@ static void kz_rp_writer_thread(void)
 
                         if (rename(s_filepath[id], new_path) == 0)
                         {
-                            kz_storage_save(uid_str, kz_storage_get_next_id(StorageTable::replay_up_queue), StorageTable::replay_up_queue);
+                            kz_storage_save(uid_str, 0, kz_storage_get_next_id(StorageTable::replay_up_queue), StorageTable::replay_up_queue);
                             kz_log(&g_replay_writer_log, "[KRP] Saved raw replay: %s.krpr", uid_str);
                         }
                         else
@@ -681,7 +681,7 @@ static void kz_rp_writer_thread(void)
                         std::string message;
                         uint64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
                         kz_ws_build_msg(WSMessageType::add_record, data_val, message, msg_id);
-                        kz_storage_save(message, msg_id, StorageTable::outgoing_queue);
+                        kz_storage_save(message, ectoi(WSMessageType::add_record), msg_id, StorageTable::outgoing_queue);
                         kz_ws_send_msg(message, msg_id);
                     }
                     else

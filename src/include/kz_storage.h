@@ -11,19 +11,25 @@ enum class StorageTable : int
 
 typedef struct
 {
+    int32_t retry_count;
+    int32_t msg_type;
     int64_t msg_id;
-    std::string message;
     int64_t timestamp;
     StorageTable table;
+    std::string message;
 } retry_msg;
 
 extern std::filesystem::path g_data_dir;
-extern std::vector<retry_msg> g_storage_queue;
+
+extern std::mutex g_retry_mtx;
+extern std::vector<retry_msg> g_retry_queue;
 
 extern void kz_storage_init(void);
 extern void kz_storage_uninit(void);
+extern void kz_storage_load();
+extern void kz_storage_clear();
 extern int64_t kz_storage_get_next_id(StorageTable table);
-extern void kz_storage_save(const std::string& text, int64_t msg_id, StorageTable table);
+extern void kz_storage_save(const std::string& text, int32_t msg_type, int64_t msg_id, StorageTable table);
 extern void kz_storage_delete(int64_t msg_id, StorageTable table);
-
+extern void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table);
 #endif

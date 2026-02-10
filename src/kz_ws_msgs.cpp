@@ -24,16 +24,15 @@ WSMessageFunc g_callback_table[ectoi(WSMessageType::_MAX)];
 
 void kz_ws_run_tasks(int max_tasks_per_frame)
 {
-    // TODO: check storage if we need to resent something
     int tasks_done = 0;
 
-    while(g_incoming_queue.front() && tasks_done < max_tasks_per_frame)
+    while (g_incoming_queue.front() && tasks_done < max_tasks_per_frame)
     {
         JSON_Value* root_val    = *g_incoming_queue.front();
         JSON_Object* root_obj   = json_value_get_object(root_val);
         int index               = json_object_get_number(root_obj, "msg_type");
 
-        if(index <= 0 || index >= ectoi(WSMessageType::_MAX))
+        if (index <= 0 || index >= ectoi(WSMessageType::_MAX))
         {
             g_callback_table[ectoi(WSMessageType::invalid)](root_obj);
         }
@@ -46,15 +45,50 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
         g_incoming_queue.pop();
         tasks_done++;
     }
-    if(g_websocket_state.load() == WSState::Connected && g_websocket.getReadyState() == ix::ReadyState::Open)
+    if (g_websocket_state.load() != WSState::Connected || g_websocket.getReadyState() != ix::ReadyState::Open)
     {
-        while(g_outgoing_queue.front() && tasks_done < max_tasks_per_frame)
-        {
-            std::string* message = g_outgoing_queue.front();
-            kz_ws_send_msg(*message, 0);
+        return;
+    }
+    while (g_outgoing_queue.front() && tasks_done < max_tasks_per_frame)
+    {
+        std::string* message = g_outgoing_queue.front();
+        kz_ws_send_msg(*message, 0);
 
-            g_outgoing_queue.pop();
-            tasks_done++;
+        g_outgoing_queue.pop();
+        tasks_done++;
+    }
+    if (!g_outgoing_queue.empty() || tasks_done >= max_tasks_per_frame)
+    {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_retry_mtx);
+
+        auto it  = g_retry_queue.begin();
+        auto now = std::chrono::system_clock::now();
+        auto ts  = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+        while (it != g_retry_queue.end())
+        {
+            if ((ts - it->timestamp) > 5)
+            {
+                if (it->message.length() == 0 || it->retry_count > 4)
+                {
+                    it = g_retry_queue.erase(it);
+                    continue;
+                }
+
+                kz_ws_send_msg(it->message, it->msg_id);
+
+                it->timestamp = ts;
+                it->retry_count++;
+                break;
+            }
+            ++it;
+        }
+        if (!g_retry_queue.empty())
+        {
+            return;
         }
     }
 }
@@ -77,7 +111,7 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     json_object_set_string(data_obj, "steamid", g_players[id].steamid);
 
     kz_ws_build_msg(WSMessageType::client_info, data_val, message, msg_id);
-    kz_storage_save(message, msg_id, StorageTable::outgoing_queue);
+    kz_storage_save(message, ectoi(WSMessageType::client_info), msg_id, StorageTable::outgoing_queue);
     kz_ws_queue_msg(message, msg_id);
 }
 void kz_ws_ack_invalid(JSON_Object* obj)

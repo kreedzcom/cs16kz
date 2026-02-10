@@ -72,7 +72,7 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
     g_plugin_callbacks[msg_id] = { fwd, std::vector<int>() };
 
     kz_ws_build_msg(WSMessageType::map_info, data_val, message, msg_id);
-    kz_storage_save(message, msg_id, StorageTable::outgoing_queue);
+    kz_storage_save(message, ectoi(WSMessageType::map_info), msg_id, StorageTable::outgoing_queue);
     kz_ws_queue_msg(message, msg_id);
     return 1;
 }
