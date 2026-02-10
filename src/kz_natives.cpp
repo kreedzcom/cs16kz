@@ -55,7 +55,7 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
     char* mapname = MF_GetAmxString(amx, params[1], 0, &len);
     char* handler = MF_GetAmxString(amx, params[2], 1, &len);
 
-    int fwd = MF_RegisterSPForwardByName(amx, handler, FP_STRING, FP_STRING, FP_ARRAY, FP_DONE);
+    int fwd = MF_RegisterSPForwardByName(amx, handler, FP_STRING, FP_STRING, FP_STRING, FP_ARRAY, FP_DONE);
     if (fwd == -1)
     {
         MF_LogError(amx, AMX_ERR_NATIVE, "Function is not present \"%s\"", handler);

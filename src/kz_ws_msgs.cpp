@@ -96,12 +96,14 @@ void kz_ws_ack_map_info(JSON_Object* obj)
 {
     ACK_CHECK_MISSING(data.mapname);
     ACK_CHECK_MISSING(data.wr_txt);
+    ACK_CHECK_MISSING(data.swr_txt);
     ACK_CHECK_MISSING(data.type);
     ACK_CHECK_MISSING(data.length);
     ACK_CHECK_MISSING(data.difficulty);
 
     const char* mapname = json_object_dotget_string(obj, "data.mapname");
     const char* wr      = json_object_dotget_string(obj, "data.wr_txt");
+    const char* swr     = json_object_dotget_string(obj, "data.swr_txt");
 
     int map_props[3];
     map_props[0]    = json_object_dotget_number(obj, "data.type");
@@ -113,7 +115,7 @@ void kz_ws_ack_map_info(JSON_Object* obj)
 
     if(it != g_plugin_callbacks.end())
     {
-        MF_ExecuteForward(it->second.fwd, mapname, wr, MF_PrepareCellArray(map_props, sizeof(map_props)));
+        MF_ExecuteForward(it->second.fwd, mapname, wr, swr, MF_PrepareCellArray(map_props, sizeof(map_props)));
         MF_UnregisterSPForward(it->second.fwd);
     }
     else
