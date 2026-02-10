@@ -21,6 +21,7 @@
 edict_t* g_pEdicts = nullptr;
 player_t g_players[33];
 bool g_initialiazed = false;
+bool g_early_mapchange = false;
 
 bool kz_init_rehooks(void);
 bool kz_init_detours(void);
@@ -59,6 +60,7 @@ void FN_AMXX_ATTACH()
 void FN_AMXX_PLUGINSLOADED()
 {
     g_data_dir = std::filesystem::path("cstrike") / MF_GetLocalInfo("amxx_datadir", "addons/amxmodx/data") / "kz_global";
+    g_early_mapchange = false;
 
     if (!g_initialiazed)
     {
@@ -129,6 +131,23 @@ int FN_DispatchSpawn(edict_t* pent)
     }
     RETURN_META_VALUE(MRES_IGNORED, FALSE);
 }
+void FN_ChangeLevel(const char *s1, const char *s2)
+{
+    g_early_mapchange = true;
+    kz_storage_clear();
+
+    RETURN_META(MRES_IGNORED);
+}
+void FN_MessageBegin(int msg_dest, int msg_type, const float *pOrigin, edict_t *ed)
+{
+    if(msg_type == SVC_INTERMISSION)
+    {
+        g_early_mapchange = true;
+        kz_storage_clear();
+    }
+    RETURN_META(MRES_IGNORED);
+}
+
 void FN_CvarValue2(const edict_t* pEdict, int requestId, const char* cvar, const char* value)
 {
     kz_qqc_handler(pEdict, requestId, cvar, value);
@@ -196,7 +215,7 @@ BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* ps
 /***************************************************************************************************************/
 void KZ_Cvar_DirectSet(cvar_t* var, const char* const value, IRehldsHook_Cvar_DirectSet* chain)
 {
-    if (!var || !value || FStrEq(var->name, value))
+    if (!var || !value || FStrEq(var->string, value))
     {
         (chain) ? chain->callNext(var, value) : Cvar_DirectSet_Actual(var, value);
         return;

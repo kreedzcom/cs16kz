@@ -223,7 +223,7 @@
 // #define FN_ModelIndex						ModelIndex
 // #define FN_ModelFrames						ModelFrames
 // #define FN_SetSize							SetSize
-// #define FN_ChangeLevel						ChangeLevel
+#define FN_ChangeLevel						ChangeLevel
 // #define FN_GetSpawnParms						GetSpawnParms
 // #define FN_SaveSpawnParms					SaveSpawnParms
 // #define FN_VecToYaw							VecToYaw
@@ -263,7 +263,7 @@
 // #define FN_LightStyle						LightStyle
 // #define FN_DecalIndex						DecalIndex
 // #define FN_PointContents						PointContents
-// #define FN_MessageBegin						MessageBegin
+#define FN_MessageBegin						MessageBegin
 // #define FN_MessageEnd						MessageEnd
 // #define FN_WriteByte							WriteByte
 // #define FN_WriteChar							WriteChar
