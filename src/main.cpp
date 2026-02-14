@@ -39,13 +39,18 @@ void FN_AMXX_ATTACH()
     g_pEdicts = (*g_engfuncs.pfnPEntityOfEntIndex)(0);
     
     kz_ws_register(WSMessageType::invalid,     kz_ws_ack_invalid);
+
     kz_ws_register(WSMessageType::hello,       kz_ws_ack_hello);
     kz_ws_register(WSMessageType::map_info,    kz_ws_ack_map_info);
     kz_ws_register(WSMessageType::client_info, kz_ws_ack_client_info);
+
     kz_ws_register(WSMessageType::add_record,  kz_ws_ack_add_record);
     kz_ws_register(WSMessageType::del_record,  kz_ws_ack_del_record);
+
     kz_ws_register(WSMessageType::add_replay,  kz_ws_ack_add_replay);
     kz_ws_register(WSMessageType::get_replay,  kz_ws_ack_get_replay);
+
+    kz_ws_register(WSMessageType::file,        kz_ws_ack_file);
 
     kz_api_url      = register_cvar("kz_api_url",  "", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
     kz_api_token    = register_cvar("kz_api_token","", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);

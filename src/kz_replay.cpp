@@ -28,7 +28,7 @@ kz::queue<std::string> g_replay_writer_log(64);
 kz::queue<std::string> g_replay_upload_log(64);
 
 kz::queue<krp_packet> g_replay_writer_queue(4096); // (32 players * 100 fps each = 3096 + some additonal room)
-kz::queue<ws_upload_replay> g_replay_upload_queue(64);
+kz::queue<ws_upload> g_replay_upload_queue(64);
 
 std::mutex g_replay_writer_mtx;
 std::mutex g_replay_upload_mtx;
@@ -192,16 +192,18 @@ void kz_rp_update_header(void)
     snprintf(g_header.map.name, sizeof(g_header.map.name), "%s", STRING(gpGlobals->mapname));
 
     std::filesystem::path dir = g_data_dir / "replays" / g_header.map.name;
+    std::string short_path = (dir.parent_path().parent_path().filename() / dir.parent_path().filename() / dir.filename()).string();
+
     if (!std::filesystem::exists(dir))
     {
         std::error_code ec;
         if (std::filesystem::create_directories(dir, ec))
         {
-            kz_log(nullptr, "Directory created: %s", dir.c_str());
+            kz_log(nullptr, "Directory created: %s", short_path.c_str());
         }
         else
         {
-            kz_log(nullptr, "Failed to create directory (%s): %s", dir.c_str(), ec.message().c_str());
+            kz_log(nullptr, "Failed to create directory (%s): %s", short_path.c_str(), ec.message().c_str());
             return;
         }
     }
@@ -256,7 +258,7 @@ void kz_rp_write_frame(int id)
         g_replay_writer_cv.notify_one();
     }
 }
-void kz_rp_compress_and_upload_async(ws_upload_replay upr)
+void kz_rp_compress_and_upload_async(ws_upload upr)
 {
     if (!g_replay_upload_queue.try_push(upr))
     {
@@ -447,6 +449,8 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
 }
 static FILE* kz_rp_compress_file(const char* file)
 {
+
+kz_log(&g_replay_upload_log, "COMPRESSSSSSSSSSSSSSSSSSSSSS");
     FILE* fp = fopen(file, "rb");
     if (!fp) 
     {
@@ -654,8 +658,7 @@ static void kz_rp_writer_thread(void)
 
                         if (rename(s_filepath[id], new_path) == 0)
                         {
-                            kz_storage_save(uid_str, 0, kz_storage_get_next_id(StorageTable::replay_up_queue), StorageTable::replay_up_queue);
-                            kz_log(&g_replay_writer_log, "[KRP] Saved raw replay: %s.krpr", uid_str);
+                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s.krpr", uid_str);
                         }
                         else
                         {
@@ -710,10 +713,10 @@ static void kz_rp_upload_thread(void)
 {
     while (g_krp_running.load() || !g_replay_upload_queue.empty())
     {
-        while (ws_upload_replay* item = g_replay_upload_queue.front())
+        while (ws_upload* item = g_replay_upload_queue.front())
         {
             // Lazy compression
-            FILE* fp = kz_rp_compress_file(item->filepath);
+            FILE* fp = (item->filepath[strlen(item->filepath) - 1] == 'z') ? fopen(item->filepath, "rb") : kz_rp_compress_file(item->filepath);
             if (!fp)
             {
                 kz_log(&g_replay_upload_log, "[Upload] Compression/Open failure:", strerror(errno));
@@ -721,20 +724,20 @@ static void kz_rp_upload_thread(void)
                 continue;
             }
 
-            const size_t max_data_per_chunk = (CHUNK_SIZE - sizeof(ws_upload_chunk_header));
+            const size_t max_data_per_chunk = (CHUNK_SIZE - sizeof(ws_uchunk_header));
             fseek(fp, 0, SEEK_END);
             uint32_t total_chunks = (ftell(fp) + (max_data_per_chunk - 1)) / max_data_per_chunk;
             rewind(fp);
 
             if (kz_api_log_upload->value > 0.0f)
             {
-                kz_log(&g_replay_upload_log, "[Upload] Starting: (rec_id: %llu) - (%u chunks)", item->rec_id, total_chunks);
+                kz_log(&g_replay_upload_log, "[Upload] Starting: (id: %llu) - (%u chunks)", item->id, total_chunks);
             }
 
-            ws_upload_chunk_header* header = nullptr;
+            ws_uchunk_header* header = nullptr;
 
             char buffer[CHUNK_SIZE];
-            char* data_ptr = buffer + sizeof(ws_upload_chunk_header);
+            char* data_ptr = buffer + sizeof(ws_uchunk_header);
             size_t bytes = 0;
 
             auto last_log_time = std::chrono::steady_clock::now();
@@ -743,28 +746,36 @@ static void kz_rp_upload_thread(void)
                 bytes = fread(data_ptr, 1, max_data_per_chunk, fp);
                 if (bytes > 0)
                 {
-                    header = reinterpret_cast<ws_upload_chunk_header*>(buffer);
+                    header = reinterpret_cast<ws_uchunk_header*>(buffer);
                     memset(header, 0, sizeof(*header));
 
-                    header->rec_id         = item->rec_id;
+                    header->id             = item->id;
                     header->chunk_index    = i;
                     header->chunk_checksum = UTIL_CRC32(data_ptr, bytes);
+                    header->chunk_total    = total_chunks;
                     memcpy(header->local_uid, item->local_uid, sizeof(header->local_uid));
 
                     g_websocket.sendBinary(std::string(buffer, sizeof(*header) + bytes));
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    if ((i & 15) == 0)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
                 }
                 if (kz_api_log_upload->value > 0.0f)
                 {
                     auto now     = std::chrono::steady_clock::now();
                     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_log_time).count();
-                    if (elapsed > 1 || i == (total_chunks - 1))
+                    if (elapsed > 1 || i >= (total_chunks - 1) || i == 0)
                     {
                         float p = (static_cast<float>(i + 1) / static_cast<float>(total_chunks)) * 100.0f;
-                        kz_log(&g_replay_upload_log, "[Upload] (rec_id: %llu): %u/%u chunks (%0.1f%%) complete.", item->rec_id, (i + 1), total_chunks, p);
+                        kz_log(&g_replay_upload_log, "[Upload] (id: %llu): %u/%u chunks (%0.1f%%) complete.", item->id, (i + 1), total_chunks, p);
                         last_log_time = now;
                     }
                 }
+            }
+            {
+                std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
+                g_active_uploads.erase(item->local_uid);
             }
             g_replay_upload_queue.pop();
             fclose(fp);

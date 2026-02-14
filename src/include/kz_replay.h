@@ -108,20 +108,6 @@ typedef struct
     uint32_t    size_data;
 } krp_header;
 
-typedef struct
-{
-    char        filepath[255];
-    char        local_uid[32];
-    uint64_t    rec_id;
-} ws_upload_replay;
-
-typedef struct
-{
-    char        local_uid[32];
-    uint64_t    rec_id;
-    int32_t     chunk_checksum;
-    uint64_t    chunk_index;
-} ws_upload_chunk_header;
 #pragma pack(pop)
 
 extern int kz_rp_run_started(int id);
@@ -137,6 +123,6 @@ extern void kz_rp_uninit(void);
 extern void kz_rp_update_header(void);
 extern void kz_rp_set_cmd(int id, const usercmd_t* cmd);
 extern void kz_rp_set_vars(int id, const entvars_t* vars);
-extern void kz_rp_compress_and_upload_async(ws_upload_replay upr);
+extern void kz_rp_compress_and_upload_async(ws_upload upr);
 extern void kz_rp_write_frame(int id);
 #endif

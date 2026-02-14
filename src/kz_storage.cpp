@@ -29,16 +29,18 @@ void kz_storage_init(void)
         kz_log_addq(&g_storage_log);
 
         std::filesystem::path dir = g_data_dir / "sqlite3";
+        std::string short_path = (dir.parent_path().filename() / dir.filename()).string();
+
         if (!std::filesystem::exists(dir))
         {
             std::error_code ec;
             if (std::filesystem::create_directories(dir, ec))
             {
-                kz_log(&g_storage_log, "Directory created: %s", dir.c_str());
+                kz_log(&g_storage_log, "Directory created: %s", short_path.c_str());
             }
             else
             {
-                kz_log(&g_storage_log, "Failed to create directory (%s): %s", dir.c_str(), ec.message().c_str());
+                kz_log(&g_storage_log, "Failed to create directory (%s): %s", short_path.c_str(), ec.message().c_str());
                 return;
             }
         }
@@ -48,8 +50,8 @@ void kz_storage_init(void)
         std::filesystem::path file = g_data_dir / "sqlite3" / "storage.sq3";
         kz_storage_database = new SQLite::Database(file.string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
         kz_storage_database->exec("PRAGMA journal_mode=WAL;");
-        kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
-        kz_storage_database->exec("CREATE TABLE IF NOT EXISTS replay_up_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, fs_uid TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+        kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg_type INTEGER, msg TEXT NOT NULL, created_at INTEGER DEFAULT (strftime('%s','now')))");
+        kz_storage_database->exec("CREATE TABLE IF NOT EXISTS upload_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg_type INTEGER, local_uid TEXT NOT NULL, created_at INTEGER DEFAULT (strftime('%s','now')))");
         kz_storage_database->setBusyTimeout(5000);
 
         kz_storage_initialiazed = true;
@@ -70,7 +72,42 @@ void kz_storage_uninit(void)
 }
 void kz_storage_load()
 {
-    // TODO: add from db to retry_queue
+    std::lock_guard<std::mutex> lock(g_retry_mtx);
+    g_retry_queue.clear();
+
+    kz_storage_database->exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    try
+    {
+        SQLite::Statement outgoing(*kz_storage_database, "SELECT id, msg_type, msg, created_at FROM outgoing_queue");
+        SQLite::Statement upload(*kz_storage_database, "SELECT id, msg_type, local_uid, created_at FROM upload_queue");
+
+        while (outgoing.executeStep())
+        {
+            g_retry_queue.push_back({
+                    0, // retry_count
+                    outgoing.getColumn(1).getInt64(), // msg_type
+                    outgoing.getColumn(0).getInt64(), // msg_id
+                    outgoing.getColumn(3).getInt64(), // timestamp
+                    StorageTable::outgoing_queue,
+                    outgoing.getColumn(2).getText()
+            });
+        }
+        while (upload.executeStep())
+        {
+            g_retry_queue.push_back({
+                    0,
+                    upload.getColumn(1).getInt64(), // msg_type as -> rec_id
+                    upload.getColumn(0).getInt64(), // msg_id
+                    upload.getColumn(3).getInt64(), // timestamp
+                    StorageTable::upload_queue,
+                    upload.getColumn(2).getText()  // text as -> local_uid
+            });
+        }
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] load: %s", e.what());
+    }
 }
 void kz_storage_clear()
 {
@@ -82,6 +119,7 @@ void kz_storage_clear()
 
     std::vector<int64_t> delete_list[2];
     auto it = g_retry_queue.begin();
+
     while (it != g_retry_queue.end())
     {
         bool delete_msg = false;
@@ -109,7 +147,7 @@ void kz_storage_clear()
         }
     }
     kz_storage_batch_delete(delete_list[0], StorageTable::outgoing_queue);
-    kz_storage_batch_delete(delete_list[1], StorageTable::replay_up_queue);
+    //kz_storage_batch_delete(delete_list[1], StorageTable::upload_queue);
 }
 
 int64_t kz_storage_get_next_id(StorageTable table)
@@ -124,9 +162,9 @@ int64_t kz_storage_get_next_id(StorageTable table)
                 snprintf(statement, sizeof(statement), "SELECT seq FROM sqlite_sequence WHERE name='outgoing_queue'");
                 break;
             }
-            case StorageTable::replay_up_queue:
+            case StorageTable::upload_queue:
             {
-                snprintf(statement, sizeof(statement), "SELECT seq FROM sqlite_sequence WHERE name='replay_up_queue'");
+                snprintf(statement, sizeof(statement), "SELECT seq FROM sqlite_sequence WHERE name='upload_queue'");
                 break;
             }
         }
@@ -144,14 +182,24 @@ int64_t kz_storage_get_next_id(StorageTable table)
     }
     return 1;
 }
-void kz_storage_save(const std::string& text, int32_t msg_type, int64_t msg_id, StorageTable table)
+void kz_storage_save(const std::string& text, int64_t msg_type, int64_t msg_id, StorageTable table)
 {
     {
         std::lock_guard<std::mutex> lock(g_retry_mtx);
         
+        static int64_t last_ts;
         auto now = std::chrono::system_clock::now();
         auto ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
+        if ((ts - last_ts) < 5)
+        {
+            last_ts = ts;
+            ts += 5;
+        }
+        else
+        {
+            last_ts = ts;
+        }
         g_retry_queue.push_back({0, msg_type, msg_id, ts, table, text});
     }
     try
@@ -161,18 +209,19 @@ void kz_storage_save(const std::string& text, int32_t msg_type, int64_t msg_id, 
         {
             case StorageTable::outgoing_queue:
             {
-                snprintf(statement, sizeof(statement), "INSERT INTO outgoing_queue (id, msg) VALUES (?, ?)");
+                snprintf(statement, sizeof(statement), "INSERT INTO outgoing_queue (id, msg_type, msg) VALUES (?, ?, ?)");
                 break;
             }
-            case StorageTable::replay_up_queue:
+            case StorageTable::upload_queue:
             {
-                snprintf(statement, sizeof(statement), "INSERT INTO replay_up_queue (id, fs_uid) VALUES (?, ?)");
+                snprintf(statement, sizeof(statement), "INSERT INTO upload_queue (id, msg_type, local_uid) VALUES (?, ?, ?)");
                 break;
             }
         }
         SQLite::Statement query(*kz_storage_database, statement);
         query.bind(1, static_cast<long long>(msg_id));
-        query.bind(2, text);
+        query.bind(2, static_cast<long long>(msg_type));
+        query.bind(3, text);
         query.exec();
     }
     catch (const std::exception& e)
@@ -204,9 +253,9 @@ void kz_storage_delete(int64_t msg_id, StorageTable table)
                 snprintf(statement, sizeof(statement), "DELETE FROM outgoing_queue WHERE id = ?");
                 break;
             }
-            case StorageTable::replay_up_queue:
+            case StorageTable::upload_queue:
             {
-                snprintf(statement, sizeof(statement), "DELETE FROM replay_up_queue WHERE id = ?");
+                snprintf(statement, sizeof(statement), "DELETE FROM upload_queue WHERE id = ?");
                 break;
             }
         }
@@ -237,9 +286,9 @@ void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table
                 written = snprintf(statement, sizeof(statement), "DELETE FROM outgoing_queue WHERE id IN (");
                 break;
             }
-            case StorageTable::replay_up_queue:
+            case StorageTable::upload_queue:
             {
-                written = snprintf(statement, sizeof(statement), "DELETE FROM replay_up_queue WHERE id IN (");
+                written = snprintf(statement, sizeof(statement), "DELETE FROM upload_queue WHERE id IN (");
                 break;
             }
         }

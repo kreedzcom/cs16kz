@@ -6,13 +6,13 @@
 enum class StorageTable : int
 {
     outgoing_queue,
-    replay_up_queue,
+    upload_queue,
 };
 
 typedef struct
 {
     int32_t retry_count;
-    int32_t msg_type;
+    int64_t msg_type;
     int64_t msg_id;
     int64_t timestamp;
     StorageTable table;
@@ -29,7 +29,7 @@ extern void kz_storage_uninit(void);
 extern void kz_storage_load();
 extern void kz_storage_clear();
 extern int64_t kz_storage_get_next_id(StorageTable table);
-extern void kz_storage_save(const std::string& text, int32_t msg_type, int64_t msg_id, StorageTable table);
+extern void kz_storage_save(const std::string& text, int64_t msg_type, int64_t msg_id, StorageTable table);
 extern void kz_storage_delete(int64_t msg_id, StorageTable table);
 extern void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table);
 #endif
