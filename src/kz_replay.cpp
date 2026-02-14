@@ -45,7 +45,7 @@ static void kz_rp_upload_thread(void);
 
 int kz_rp_run_started(int id) 
 {
-    krp_packet item = {0};
+    krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_START;
     
@@ -64,7 +64,7 @@ int kz_rp_run_started(int id)
 }
 int kz_rp_run_checkpoint(int id)
 {
-    krp_packet item = {0};
+    krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_EVENT;
 
@@ -81,7 +81,7 @@ int kz_rp_run_checkpoint(int id)
 }
 int kz_rp_run_gocheck(int id)
 {
-    krp_packet item = {0};
+    krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_EVENT;
 
@@ -98,7 +98,7 @@ int kz_rp_run_gocheck(int id)
 }
 int kz_rp_run_paused(int id)
 {
-    krp_packet item = {0};
+    krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_PAUSE;
 
@@ -112,7 +112,7 @@ int kz_rp_run_paused(int id)
 }
 int kz_rp_run_unpaused(int id)
 {
-    krp_packet item = {0};
+    krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_UNPAUSE;
 
@@ -130,7 +130,7 @@ int kz_rp_run_unpaused(int id)
 }
 int kz_rp_run_rejected(int id, bool delete_file)
 {
-    krp_packet item = {0};
+    krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_REJECT;
 
@@ -148,7 +148,7 @@ int kz_rp_run_rejected(int id, bool delete_file)
 
 int kz_rp_run_finished(int id, float time)
 {
-    krp_packet item = {0};
+    krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_FINISH;
 
@@ -293,7 +293,7 @@ static void kz_rp_write_frametype(FILE* fp, krp_packet* curr, uint8_t frametype)
 {
     fwrite(&frametype, sizeof(frametype), 1, fp);
     
-    krp_mask mask = {0};
+    krp_mask mask = {};
     switch (frametype)
     {
         case BIT_FRAMETYPE_EVENT:
@@ -325,7 +325,7 @@ static void kz_rp_write_keyframe(FILE* fp, krp_packet* curr)
 }
 static void kz_rp_write_delta(FILE* fp, krp_packet* curr, krp_packet* last)
 {
-    krp_mask mask = {0};
+    krp_mask mask = {};
     const size_t size = sizeof(krp_frame);
 
     uint8_t buffer[size];
@@ -449,8 +449,6 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
 }
 static FILE* kz_rp_compress_file(const char* file)
 {
-
-kz_log(&g_replay_upload_log, "COMPRESSSSSSSSSSSSSSSSSSSSSS");
     FILE* fp = fopen(file, "rb");
     if (!fp) 
     {

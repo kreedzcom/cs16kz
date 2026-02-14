@@ -80,6 +80,10 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             json_value_free(root_val);
             break;
         }
+        case ix::WebSocketMessageType::Fragment:
+        {
+            break;
+        }
         case ix::WebSocketMessageType::Ping:
         {
             kz_log(&g_ws_log, "[WS] Ping.");

@@ -81,7 +81,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                     std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
                     if (g_active_uploads.find(it->message) == g_active_uploads.end())
                     {
-                        ws_upload metadata = {0};
+                        ws_upload metadata = {};
                         metadata.id = it->msg_type;
 
                         std::filesystem::path replay = g_data_dir / "replays" / STRING(gpGlobals->mapname) / it->message;
@@ -239,7 +239,7 @@ std::function<void()> kz_ws_ack_add_record(JSON_Object* obj)
      ACK_CHECK_MISSING(data.id);
      ACK_CHECK_MISSING(data.local_uid);
 
-     ws_upload metadata = {0};
+     ws_upload metadata = {};
      metadata.id = json_object_dotget_number(obj, "data.id");
 
      const char* local_uid = json_object_dotget_string(obj, "data.local_uid");

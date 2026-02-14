@@ -53,7 +53,7 @@ void kz_ac_frame(void)
 void kz_ac_cmd(int id, const usercmd_t* ucmd)
 {
     g_total_frames[id] += 1;
-    memcpy(&g_current_cmd[id], ucmd, sizeof(usercmd_t));
+    memcpy((void*)&g_current_cmd[id], ucmd, sizeof(usercmd_t));
 }
 void kz_ac_postthink(int id, edict_t* pEdict)
 {

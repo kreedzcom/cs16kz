@@ -203,7 +203,6 @@ size_t remove_substring(char* text, const char* what)
 }
 void split_net_address(const char* addr, char* ip, size_t ip_maxlen, char* port, size_t port_maxlen)
 {
-    const char* ptr;
     if(!port || !port_maxlen)
     {
         char* ncptr;
