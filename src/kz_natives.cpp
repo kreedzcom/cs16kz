@@ -72,8 +72,18 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
     g_plugin_callbacks[msg_id] = { fwd, std::vector<int>() };
 
     kz_ws_build_msg(WSMessageType::map_info, data_val, message, msg_id);
-    kz_storage_save(message, ectoi(WSMessageType::map_info), msg_id, StorageTable::outgoing_queue);
-    kz_ws_queue_msg(message, msg_id);
+
+#ifdef SHARED_PTR_DBG
+    auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
+        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+        delete p;
+    });
+#else
+    auto shared_msg = std::make_shared<std::string>(std::move(message));
+#endif
+
+    kz_storage_save(shared_msg, ectoi(WSMessageType::map_info), msg_id, StorageTable::outgoing_queue);
+    kz_ws_queue_msg(shared_msg, msg_id);
     return 1;
 }
 

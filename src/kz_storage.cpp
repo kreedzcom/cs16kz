@@ -89,7 +89,14 @@ void kz_storage_load()
                     outgoing.getColumn(0).getInt64(), // msg_id
                     outgoing.getColumn(3).getInt64(), // timestamp
                     StorageTable::outgoing_queue,
-                    outgoing.getColumn(2).getText()
+#ifdef SHARED_PTR_DBG
+                    std::shared_ptr<std::string>(new std::string(std::move(outgoing.getColumn(2).getText())), [](std::string* p) {
+                        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+                        delete p;
+                    })
+#else
+                    std::make_shared<std::string>(std::move(outgoing.getColumn(2).getText()))
+#endif
             });
         }
         while (upload.executeStep())
@@ -100,7 +107,14 @@ void kz_storage_load()
                     upload.getColumn(0).getInt64(), // msg_id
                     upload.getColumn(3).getInt64(), // timestamp
                     StorageTable::upload_queue,
-                    upload.getColumn(2).getText()  // text as -> local_uid
+#ifdef SHARED_PTR_DBG
+                    std::shared_ptr<std::string>(new std::string(std::move(upload.getColumn(2).getText())), [](std::string* p) {
+                        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+                        delete p;
+                    })
+#else
+                    std::make_shared<std::string>(std::move(upload.getColumn(2).getText())) // text as -> local_uid
+#endif
             });
         }
     }
@@ -182,7 +196,7 @@ int64_t kz_storage_get_next_id(StorageTable table)
     }
     return 1;
 }
-void kz_storage_save(const std::string& text, int64_t msg_type, int64_t msg_id, StorageTable table)
+void kz_storage_save(std::shared_ptr<std::string> text, int64_t msg_type, int64_t msg_id, StorageTable table)
 {
     {
         std::lock_guard<std::mutex> lock(g_retry_mtx);
@@ -221,7 +235,7 @@ void kz_storage_save(const std::string& text, int64_t msg_type, int64_t msg_id, 
         SQLite::Statement query(*kz_storage_database, statement);
         query.bind(1, static_cast<long long>(msg_id));
         query.bind(2, static_cast<long long>(msg_type));
-        query.bind(3, text);
+        query.bind(3, *text);
         query.exec();
     }
     catch (const std::exception& e)

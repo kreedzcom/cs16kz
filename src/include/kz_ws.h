@@ -67,7 +67,7 @@ extern WSMessageFunc g_callback_table[];
 extern kz::websocket g_websocket;
 extern std::atomic<WSState> g_websocket_state;
 extern kz::queue<std::string> g_ws_log;
-extern kz::queue<std::string> g_outgoing_queue;
+extern kz::queue<std::shared_ptr<std::string>> g_outgoing_queue;
 extern kz::queue<std::function<void()>> g_incoming_queue;
 
 extern std::mutex g_active_uploads_mtx;
@@ -80,7 +80,7 @@ extern void kz_ws_start(std::string url, std::string token);
 extern void kz_ws_stop(void);
 
 extern void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& output, int64_t msg);
-extern void kz_ws_queue_msg(std::string& msg, int64_t msg_id);
+extern void kz_ws_queue_msg(std::shared_ptr<std::string> msg, int64_t msg_id);
 extern void kz_ws_send_msg(std::string& msg, int64_t msg_id);
 
 extern void kz_ws_run_tasks(int max_jobs_per_frame);

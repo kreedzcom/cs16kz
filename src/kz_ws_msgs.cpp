@@ -46,7 +46,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
     }
     while (g_outgoing_queue.front() && tasks_done < max_tasks_per_frame)
     {
-        std::string* message = g_outgoing_queue.front();
+        std::shared_ptr<std::string> message = *g_outgoing_queue.front();
         kz_ws_send_msg(*message, 0);
 
         g_outgoing_queue.pop();
@@ -67,27 +67,27 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
         {
             if ((ts - it->timestamp) > 5)
             {
-                if (it->message.length() == 0 || it->retry_count > 4)
+                if (it->message->length() == 0 || it->retry_count > 4)
                 {
                     it = g_retry_queue.erase(it);
                     continue;
                 }
                 if (it->table == StorageTable::outgoing_queue)
                 {
-                    kz_ws_send_msg(it->message, it->msg_id);
+                    kz_ws_send_msg(*(it->message), it->msg_id);
                 }
                 else if (it->table == StorageTable::upload_queue)
                 {
                     std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-                    if (g_active_uploads.find(it->message) == g_active_uploads.end())
+                    if (g_active_uploads.find(*(it->message)) == g_active_uploads.end())
                     {
                         ws_upload metadata = {};
                         metadata.id = it->msg_type;
 
-                        std::filesystem::path replay = g_data_dir / "replays" / STRING(gpGlobals->mapname) / it->message;
+                        std::filesystem::path replay = g_data_dir / "replays" / STRING(gpGlobals->mapname) / *(it->message);
                         replay.replace_extension(".krpz");
 
-                        snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", it->message.c_str());
+                        snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", it->message->c_str());
 
                         if (!std::filesystem::exists(replay) || !std::filesystem::is_regular_file(replay))
                         {
@@ -99,7 +99,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
 
                         if (std::filesystem::exists(replay) && std::filesystem::is_regular_file(replay))
                         {
-                            g_active_uploads.insert(it->message);
+                            g_active_uploads.insert(*(it->message));
 
                             kz_log(nullptr, "[WS] Retrying upload of replay: %s", replay.c_str());
                             kz_rp_compress_and_upload_async(metadata);
@@ -142,8 +142,18 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     json_object_set_string(data_obj, "steamid", g_players[id].steamid);
 
     kz_ws_build_msg(WSMessageType::client_info, data_val, message, msg_id);
-    kz_storage_save(message, ectoi(WSMessageType::client_info), msg_id, StorageTable::outgoing_queue);
-    kz_ws_queue_msg(message, msg_id);
+
+#ifdef SHARED_PTR_DBG
+    auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
+        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+        delete p;
+    });
+#else
+    auto shared_msg = std::make_shared<std::string>(std::move(message));
+#endif
+
+    kz_storage_save(shared_msg, ectoi(WSMessageType::client_info), msg_id, StorageTable::outgoing_queue);
+    kz_ws_queue_msg(shared_msg, msg_id);
 }
 std::function<void()> kz_ws_ack_invalid(JSON_Object* obj)
 {
@@ -250,19 +260,28 @@ std::function<void()> kz_ws_ack_add_record(JSON_Object* obj)
 
      if (!std::filesystem::exists(replay) || !std::filesystem::is_regular_file(replay))
      {
-         replay.replace_extension(".krpr");
+          replay.replace_extension(".krpr");
      }
 
      snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.c_str());
 
      if (std::filesystem::exists(replay) && std::filesystem::is_regular_file(replay))
      {
-         {
-              std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-              g_active_uploads.insert(local_uid);
-         }
+          {
+               std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
+               g_active_uploads.insert(local_uid);
+          }
+#ifdef SHARED_PTR_DBG
+          auto shared_msg = std::shared_ptr<std::string>(new std::string(metadata.local_uid), [](std::string* p) {
+               MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+               delete p;
+          });
+#else
+          auto shared_msg = std::make_shared<std::string>(metadata.local_uid);
+#endif
+
          kz_log(&g_ws_log, "[WS] Starting upload of replay: %s", replay.c_str());
-         kz_storage_save(metadata.local_uid, metadata.id, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
+         kz_storage_save(shared_msg, metadata.id, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
          kz_rp_compress_and_upload_async(metadata);
      }
      else

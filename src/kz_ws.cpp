@@ -12,7 +12,7 @@ kz::websocket g_websocket;
 std::atomic<WSState> g_websocket_state;
 
 kz::queue<std::string> g_ws_log(64);
-kz::queue<std::string> g_outgoing_queue(64);
+kz::queue<std::shared_ptr<std::string>> g_outgoing_queue(64);
 kz::queue<std::function<void()>> g_incoming_queue(64);
 
 static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
@@ -214,16 +214,16 @@ void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& msg,
     }
     json_value_free(root_val);
 }
-void kz_ws_queue_msg(std::string& msg, int64_t msg_id)
+void kz_ws_queue_msg(std::shared_ptr<std::string> msg, int64_t msg_id)
 {
-    if(msg.empty())
+    if(!msg || msg->empty())
     {
         kz_log(&g_ws_log, "[WS] Tried to queue empty message.");
         return;
     }
-    if(!g_outgoing_queue.try_push(std::move(msg)))
+    if(!g_outgoing_queue.try_push(msg))
     {
-        kz_log(&g_ws_log, "[WS] Failed to queue message [sid: %lld]: %s", msg_id, msg.c_str());
+        kz_log(&g_ws_log, "[WS] Failed to queue message [sid: %lld]: %s", msg_id, msg->c_str());
     }
     return;
 }
