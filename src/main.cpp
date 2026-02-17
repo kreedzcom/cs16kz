@@ -64,7 +64,7 @@ void FN_AMXX_ATTACH()
 }
 void FN_AMXX_PLUGINSLOADED()
 {
-    g_data_dir = std::filesystem::path("cstrike") / MF_GetLocalInfo("amxx_datadir", "addons/amxmodx/data") / "kz_global";
+    g_data_dir = std::filesystem::path("cstrike") / MF_GetLocalInfo("amxx_datadir", "addons/amxmodx/data");
     g_early_mapchange = false;
 
     if (!g_initialiazed)

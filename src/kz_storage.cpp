@@ -28,26 +28,24 @@ void kz_storage_init(void)
     {
         kz_log_addq(&g_storage_log);
 
-        std::filesystem::path dir = g_data_dir / "sqlite3";
-        std::string short_path = (dir.parent_path().filename() / dir.filename()).string();
-
+        std::filesystem::path dir = g_data_dir / "kz_global" / "sqlite3";
         if (!std::filesystem::exists(dir))
         {
             std::error_code ec;
             if (std::filesystem::create_directories(dir, ec))
             {
-                kz_log(&g_storage_log, "Directory created: %s", short_path.c_str());
+                kz_log(&g_storage_log, "Directory created: %s", std::filesystem::relative(dir, g_data_dir).c_str());
             }
             else
             {
-                kz_log(&g_storage_log, "Failed to create directory (%s): %s", short_path.c_str(), ec.message().c_str());
+                kz_log(&g_storage_log, "Failed to create directory (%s): %s", std::filesystem::relative(dir, g_data_dir).c_str(), ec.message().c_str());
                 return;
             }
         }
     }
     try
     {
-        std::filesystem::path file = g_data_dir / "sqlite3" / "storage.sq3";
+        std::filesystem::path file = g_data_dir / "kz_global" / "sqlite3" / "storage.sq3";
         kz_storage_database = new SQLite::Database(file.string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
         kz_storage_database->exec("PRAGMA journal_mode=WAL;");
         kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg_type INTEGER, msg TEXT NOT NULL, created_at INTEGER DEFAULT (strftime('%s','now')))");

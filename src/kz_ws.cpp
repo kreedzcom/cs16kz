@@ -32,7 +32,7 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             const char* c_data = msg->str.c_str();
             if(kz_api_log_recv->value > 0.0f)
             {
-                kz_log(&g_ws_log, "[WS] Received message: %s", c_data);
+                kz_log(&g_ws_log, "[WS] Received: %s", c_data);
             }
 
             JSON_Value* root_val = json_parse_string(c_data);
@@ -242,6 +242,6 @@ void kz_ws_send_msg(std::string& msg, int64_t msg_id)
     }
     else if(kz_api_log_send->value > 0.0f)
     {
-        kz_log(&g_ws_log, "[WS] Sending message: %s", msg.c_str());
+        kz_log(&g_ws_log, "[WS] Send: %s", msg.c_str());
     }
 }

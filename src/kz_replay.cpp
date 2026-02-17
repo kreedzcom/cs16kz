@@ -191,19 +191,17 @@ void kz_rp_update_header(void)
     g_header.map.checksum = get_map_crc32(STRING(gpGlobals->mapname));
     snprintf(g_header.map.name, sizeof(g_header.map.name), "%s", STRING(gpGlobals->mapname));
 
-    std::filesystem::path dir = g_data_dir / "replays" / g_header.map.name;
-    std::string short_path = (dir.parent_path().parent_path().filename() / dir.parent_path().filename() / dir.filename()).string();
-
+    std::filesystem::path dir = g_data_dir / "kz_global" / "replays" / g_header.map.name;
     if (!std::filesystem::exists(dir))
     {
         std::error_code ec;
         if (std::filesystem::create_directories(dir, ec))
         {
-            kz_log(nullptr, "Directory created: %s", short_path.c_str());
+            kz_log(nullptr, "Directory created: %s", std::filesystem::relative(dir, g_data_dir).c_str());
         }
         else
         {
-            kz_log(nullptr, "Failed to create directory (%s): %s", short_path.c_str(), ec.message().c_str());
+            kz_log(nullptr, "Failed to create directory (%s): %s", std::filesystem::relative(dir, g_data_dir).c_str(), ec.message().c_str());
             return;
         }
     }
@@ -529,7 +527,7 @@ static void kz_rp_writer_thread(void)
 
                     header.timestamp = sig->ts;
 
-                    std::filesystem::path path = g_data_dir / "replays" / mapname / sig->steamid_short;
+                    std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / sig->steamid_short;
                     snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.c_str());
                     snprintf(header.player.steamid, sizeof(header.player.steamid), "STEAM_%c:%c:%s", sig->steamid_short[0], sig->steamid_short[1], sig->steamid_short + 2);
 
@@ -540,7 +538,7 @@ static void kz_rp_writer_thread(void)
                     }
                     else
                     {
-                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not create %s (%s)", s_filepath[id], strerror(errno));
+                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not create %s.tmp (%s)", std::filesystem::relative(path, g_data_dir).c_str(), strerror(errno));
                     }
                     memset(&s_last[id], 0, sizeof(s_last[0]));
                     s_counter[id] = 0;
@@ -594,7 +592,7 @@ static void kz_rp_writer_thread(void)
                     krp_signal* sig     = reinterpret_cast<krp_signal*>(s_curr->data);
                     const char* mapname = g_header.map.name;
 
-                    std::filesystem::path path = g_data_dir / "replays" / mapname / sig->steamid_short;
+                    std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / sig->steamid_short;
                     snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.c_str());
 
                     if (s_fd[id])
@@ -611,7 +609,7 @@ static void kz_rp_writer_thread(void)
                     }
                     if (!s_fd[id])
                     {
-                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not open %s (%s)", s_filepath[id], strerror(errno));
+                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not open %s.tmp (%s)", std::filesystem::relative(path, g_data_dir).c_str(), strerror(errno));
                     }
                     break;
                 }
@@ -647,7 +645,7 @@ static void kz_rp_writer_thread(void)
                         to_base36(kz_rp_timestamp_from_header(s_fd[id]), ts_str, sizeof(ts_str));
                         snprintf(uid_str, sizeof(uid_str), "%s_%s", sig->steamid_short, ts_str);
 
-                        std::filesystem::path npath = g_data_dir / "replays" / mapname / uid_str;
+                        std::filesystem::path npath = g_data_dir / "kz_global" / "replays" / mapname / uid_str;
                         snprintf(new_path, sizeof(new_path), "%s.krpr", npath.c_str());
 
                         fclose(s_fd[id]);
@@ -656,7 +654,7 @@ static void kz_rp_writer_thread(void)
 
                         if (rename(s_filepath[id], new_path) == 0)
                         {
-                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s.krpr", uid_str);
+                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s.krpr", std::filesystem::relative(npath, g_data_dir).c_str());
                         }
                         else
                         {
@@ -726,7 +724,7 @@ static void kz_rp_upload_thread(void)
             FILE* fp = (item->filepath[strlen(item->filepath) - 1] == 'z') ? fopen(item->filepath, "rb") : kz_rp_compress_file(item->filepath);
             if (!fp)
             {
-                kz_log(&g_replay_upload_log, "[Upload] Compression/Open failure:", strerror(errno));
+                kz_log(&g_replay_upload_log, "[UPLOAD] Compression/Open failure:", strerror(errno));
                 g_replay_upload_queue.pop();
                 continue;
             }
@@ -738,7 +736,7 @@ static void kz_rp_upload_thread(void)
 
             if (kz_api_log_upload->value > 0.0f)
             {
-                kz_log(&g_replay_upload_log, "[Upload] Starting: (id: %llu) - (%u chunks)", item->id, total_chunks);
+                kz_log(&g_replay_upload_log, "[UPLOAD] Starting: (id: %llu) - (%u chunks)", item->id, total_chunks);
             }
 
             ws_uchunk_header* header = nullptr;
@@ -775,7 +773,7 @@ static void kz_rp_upload_thread(void)
                     if (elapsed > 1 || i >= (total_chunks - 1) || i == 0)
                     {
                         float p = (static_cast<float>(i + 1) / static_cast<float>(total_chunks)) * 100.0f;
-                        kz_log(&g_replay_upload_log, "[Upload] (id: %llu): %u/%u chunks (%0.1f%%) complete.", item->id, (i + 1), total_chunks, p);
+                        kz_log(&g_replay_upload_log, "[UPLOAD] (id: %llu): %u/%u chunks (%0.1f%%) complete.", item->id, (i + 1), total_chunks, p);
                         last_log_time = now;
                     }
                 }

@@ -84,7 +84,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                         ws_upload metadata = {};
                         metadata.id = it->msg_type;
 
-                        std::filesystem::path replay = g_data_dir / "replays" / STRING(gpGlobals->mapname) / *(it->message);
+                        std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / STRING(gpGlobals->mapname) / *(it->message);
                         replay.replace_extension(".krpz");
 
                         snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", it->message->c_str());
@@ -100,13 +100,18 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                         if (std::filesystem::exists(replay) && std::filesystem::is_regular_file(replay))
                         {
                             g_active_uploads.insert(*(it->message));
-
-                            kz_log(nullptr, "[WS] Retrying upload of replay: %s", replay.c_str());
-                            kz_rp_compress_and_upload_async(metadata);
+                            if (kz_api_log_upload->value > 0.0f)
+                            {
+                                kz_log(nullptr, "[UPLOAD] Retry (%d): %s", it->retry_count + 1, std::filesystem::relative(replay, g_data_dir).c_str());
+                                kz_rp_compress_and_upload_async(metadata);
+                            }
                         }
                         else
                         {
-                            kz_log(nullptr, "[WS] Retry upload failed (file doesnt exist): %s", replay.c_str());
+                            if (kz_api_log_upload->value > 0.0f)
+                            {
+                                kz_log(nullptr, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+                            }
                         }
                     }
                 }
@@ -253,7 +258,7 @@ std::function<void()> kz_ws_ack_add_record(JSON_Object* obj)
      metadata.id = json_object_dotget_number(obj, "data.id");
 
      const char* local_uid = json_object_dotget_string(obj, "data.local_uid");
-     std::filesystem::path replay = g_data_dir / "replays" / STRING(gpGlobals->mapname) / local_uid;
+     std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / STRING(gpGlobals->mapname) / local_uid;
      replay.replace_extension(".krpz");
 
      snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", local_uid);
@@ -280,13 +285,19 @@ std::function<void()> kz_ws_ack_add_record(JSON_Object* obj)
           auto shared_msg = std::make_shared<std::string>(metadata.local_uid);
 #endif
 
-         kz_log(&g_ws_log, "[WS] Starting upload of replay: %s", replay.c_str());
-         kz_storage_save(shared_msg, metadata.id, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
-         kz_rp_compress_and_upload_async(metadata);
+          if (kz_api_log_upload->value > 0.0f)
+          {
+               kz_log(&g_ws_log, "[UPLOAD] File: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+          }
+          kz_storage_save(shared_msg, metadata.id, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
+          kz_rp_compress_and_upload_async(metadata);
      }
      else
      {
-         kz_log(&g_ws_log, "[WS] Replay file does not exist: %s", replay.c_str());
+          if (kz_api_log_upload->value > 0.0f)
+          {
+               kz_log(&g_ws_log, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+          }
      }
      return nullptr;
 }
