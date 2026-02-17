@@ -188,7 +188,7 @@ std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
 
 
     char szWR[128];  snprintf(szWR, sizeof(szWR), "%s", json_object_dotget_string(obj, "data.wr_txt"));
-    char szSWR[128]; snprintf(szWR, sizeof(szSWR), "%s", json_object_dotget_string(obj, "data.swr_txt"));
+    char szSWR[128]; snprintf(szSWR, sizeof(szSWR), "%s", json_object_dotget_string(obj, "data.swr_txt"));
     char szMap[64];  snprintf(szMap, sizeof(szMap), "%s", json_object_dotget_string(obj, "data.mapname"));
 
     int map_props[3];
