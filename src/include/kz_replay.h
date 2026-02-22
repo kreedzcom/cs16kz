@@ -5,6 +5,8 @@
 #include "usercmd.h"
 #endif
 
+#include <filesystem>
+
 enum : uint8_t
 {
     BIT_FRAMETYPE_EVENT,
@@ -29,6 +31,13 @@ enum : uint8_t
     KRP_SIGNAL_FINISH,
 };
 
+typedef struct
+{
+    float x;
+    float y;
+    float z;
+} v3f;
+
 #pragma pack(push, 1)
 typedef struct
 {
@@ -38,9 +47,9 @@ typedef struct
 
 typedef struct
 {
-    vec3_t origin;
-    vec3_t velocity;
-    vec3_t v_angle;
+    v3f origin;
+    v3f velocity;
+    v3f v_angle;
     int32_t fixangle;
     int32_t movetype;
     int32_t flags;
@@ -64,7 +73,7 @@ typedef struct
 {
     int16_t lerp_msec;
     uint8_t msec;
-    vec3_t viewangles;
+    v3f viewangles;
 
     float forwardmove;
     float sidemove;
@@ -75,7 +84,7 @@ typedef struct
     uint8_t weaponselect;
 
     int32_t impact_index;
-    vec3_t impact_position;
+    v3f impact_position;
 } krp_usercmd;
 
 typedef struct  {
@@ -110,6 +119,48 @@ typedef struct
 
 #pragma pack(pop)
 
+// Smaller ver. of krp_frame->vars
+typedef struct
+{
+    v3f origin;
+    v3f v_angle;
+    int32_t flags;
+    int32_t button;
+    int32_t oldbuttons;
+} krp_playback_frame;
+
+typedef struct
+{
+    uint8_t frame_type;
+    uint8_t frame_mask[sizeof(krp_mask)];
+    uint8_t data[sizeof(krp_frame)];
+} krp_playback_entry;
+
+// Actual playback data (in-memory)
+typedef struct
+{
+    bool use_cmd;
+    bool double_speed;
+
+    int32_t use_count;
+    int32_t plr_sound;
+    int32_t step_left;
+    int32_t team;
+
+    int32_t frame_counter;
+    int32_t finish_frame;
+    int32_t delay_counter;
+
+    float time_s;
+    char timer_str[32];
+    std::filesystem::path filepath;
+
+    krp_header header;
+    std::vector<krp_playback_frame> frames;
+} krp_playback;
+
+extern krp_playback* g_pb_bot_data;
+
 extern int kz_rp_run_started(int id);
 extern int kz_rp_run_checkpoint(int id);
 extern int kz_rp_run_gocheck(int id);
@@ -125,4 +176,16 @@ extern void kz_rp_set_cmd(int id, const usercmd_t* cmd);
 extern void kz_rp_set_vars(int id, const entvars_t* vars);
 extern void kz_rp_compress_and_upload_async(ws_upload upr);
 extern void kz_rp_write_frame(int id);
+
+extern void kz_pb_init(void);
+extern void kz_pb_uninit(void);
+extern void kz_pb_frame(void);
+extern void kz_pb_server_deactivate_post(void);
+extern void kz_pb_spawn(edict_t* pent);
+extern void kz_pb_think(edict_t* pent);
+extern void kz_pb_addtofullpack(entity_state_s* state, int e, edict_t* ent, edict_t* host, int hostflags, int player, unsigned char* pset);
+extern int kz_pb_check_visibility(const edict_t* pEntity, unsigned char* pset);
+extern void kz_pb_parse_file_async(std::filesystem::path file);
+extern std::string kz_rp_mapname_from_header(FILE* fp);
+extern std::filesystem::path kz_pb_find_fastest(const char* mapname);
 #endif

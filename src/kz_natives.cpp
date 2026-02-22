@@ -147,10 +147,10 @@ static cell AMX_NATIVE_CALL kz_api_run_unpaused(AMX* amx, cell* params)
     return (id ? kz_rp_run_unpaused(id) : 0);
 }
 
-/* native kz_api_run_rejected(id, bool:delete_file) */
+/* native kz_api_run_rejected(id) */
 static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 2))
+    if (!validate_params(amx, params, 1))
     {
         return 0;
     }
@@ -197,8 +197,8 @@ AMX_NATIVE_INFO kz_api_natives[] =
     {NULL, NULL},
 };
 
-int fwd_on_record_added = -1;
-int fwd_on_replay_downloaded = -1;
+int g_fwd_bot_run_started = -1;
+int g_fwd_bot_run_finished = -1;
 
 std::map<int64_t, plugin_callback_data> g_plugin_callbacks;
 
@@ -207,8 +207,8 @@ void kz_api_add_forwards(void)
     int fwd = MF_RegisterForward("__kz_global_api_version_check", ET_IGNORE, FP_CELL, FP_CELL, FP_DONE);
     MF_ExecuteForward(fwd, MODULE_VERSION_MAJOR, MODULE_VERSION_MINOR);
 
-    fwd_on_record_added      = MF_RegisterForward("kz_api_on_record_added", ET_IGNORE, FP_CELL, FP_ARRAY, FP_CELL, FP_DONE);
-    fwd_on_replay_downloaded = MF_RegisterForward("kz_api_on_replay_downloaded", ET_IGNORE, FP_CELL, FP_STRING, FP_DONE);
+    g_fwd_bot_run_started      = MF_RegisterForward("kz_bot_run_started", ET_IGNORE, FP_CELL, FP_DONE);
+    g_fwd_bot_run_finished     = MF_RegisterForward("kz_bot_run_finished", ET_IGNORE, FP_CELL, FP_DONE);
 }
 void kz_api_add_natives(void)
 {

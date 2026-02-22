@@ -47,7 +47,13 @@ cvar_t* kz_api_token    = nullptr;
 cvar_t* kz_api_log_send = nullptr;
 cvar_t* kz_api_log_recv = nullptr;
 cvar_t* kz_api_log_upload = nullptr;
+cvar_t* kz_api_log_parse = nullptr;
+
+cvar_t* kz_api_retries_max = nullptr;
+cvar_t* kz_api_retries_delay = nullptr;
 cvar_t* kz_api_replays_clevel = nullptr;
+
+cvar_t* kz_api_bot_prefix = nullptr;
 
 char g_prev_api_url[64];
 char g_prev_api_token[64];

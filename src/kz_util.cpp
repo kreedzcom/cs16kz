@@ -1,5 +1,6 @@
 #include "amxxmodule.h"
 
+#include "const.h"
 #include "pdata.h"
 #include "kz_ws.h"
 #include "kz_util.h"
@@ -55,6 +56,76 @@ const unsigned int kCRCTable[256] = {
 	0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
 	0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
+
+void fm_set_user_team(edict_t* ed, int team)
+{
+    const char* team_names[] = {"", "TERRORIST", "CT", "SPECTATOR" };
+    int id = indexOfEdict(ed);
+
+#ifdef WIN32
+    //set_member<int>(ed->pvPrivateData, 114, team);
+    *((int*)ed->pvPrivateData + 114) = 1;
+#else
+    //set_member<int>(ed->pvPrivateData, 119, team);
+    *((int*)ed->pvPrivateData + 119) = 1;
+#endif
+
+    MESSAGE_BEGIN(MSG_ALL, g_msg_teaminfo);
+    WRITE_BYTE(id);
+    WRITE_STRING(team_names[team]);
+    MESSAGE_END();
+
+    MF_SetPlayerTeamInfo(id, team, team_names[team]);
+}
+void fm_cs_user_spawn(edict_t* ed)
+{
+    ed->v.deadflag = DEAD_RESPAWNABLE;
+    MDLL_Spawn(ed);
+    ed->v.iuser1 = 0;
+}
+void fm_give_item(edict_t* ed, const char* item)
+{
+    edict_t* pItem = CREATE_NAMED_ENTITY(ALLOC_STRING(item));
+    if (!FNullEnt(pItem))
+    {
+        pItem->v.origin = ed->v.origin;
+        pItem->v.spawnflags = (pItem->v.spawnflags | (1 << 30));
+        MDLL_Spawn(pItem);
+
+        int save = pItem->v.solid;
+        MDLL_Touch(pItem, ed);
+        if (pItem->v.solid == save)
+        {
+            REMOVE_ENTITY(pItem);
+        }
+    }
+}
+
+std::string formay_bytes(uint64_t bytes)
+{
+    const char* units[] = { "bytes", "KB", "MB", "GB", "TB" };
+    int i = 0;
+    double d_bytes = static_cast<double>(bytes);
+
+    while (d_bytes >= 1024 && i < 4)
+    {
+        d_bytes /= 1024;
+        i++;
+    }
+
+    std::ostringstream oss;
+    if (i > 0)
+    {
+        oss << std::fixed << std::setprecision(2);
+    }
+    else
+    {
+        oss << std::fixed << std::setprecision(0);
+    }
+
+    oss << d_bytes << " " << units[i];
+    return oss.str();
+}
 
 void kz_log_init(std::thread::id t)
 {

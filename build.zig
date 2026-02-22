@@ -338,6 +338,7 @@ pub fn build(b: *std.Build) !void
 			"kz_cvars.cpp",
 			"kz_natives.cpp",
 			"kz_replay.cpp",
+			"kz_replay_pb.cpp",
 			"kz_storage.cpp",
 			"kz_util.cpp",
 			"kz_ws.cpp",

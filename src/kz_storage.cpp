@@ -158,6 +158,8 @@ void kz_storage_clear()
             ++it;
         }
     }
+
+    g_retry_queue.clear();
     kz_storage_batch_delete(delete_list[0], StorageTable::outgoing_queue);
     //kz_storage_batch_delete(delete_list[1], StorageTable::upload_queue);
 }
@@ -196,6 +198,7 @@ int64_t kz_storage_get_next_id(StorageTable table)
 }
 void kz_storage_save(std::shared_ptr<std::string> text, int64_t msg_type, int64_t msg_id, StorageTable table)
 {
+    if (table == StorageTable::outgoing_queue || table == StorageTable::upload_queue)
     {
         std::lock_guard<std::mutex> lock(g_retry_mtx);
         
@@ -230,6 +233,7 @@ void kz_storage_save(std::shared_ptr<std::string> text, int64_t msg_type, int64_
                 break;
             }
         }
+
         SQLite::Statement query(*kz_storage_database, statement);
         query.bind(1, static_cast<long long>(msg_id));
         query.bind(2, static_cast<long long>(msg_type));

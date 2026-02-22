@@ -28,8 +28,6 @@ enum class WSMessageType : int
 
     add_record,
     del_record,
-
-    add_replay,
     get_replay,
 
     file,
@@ -46,13 +44,13 @@ namespace kz {
 typedef struct
 {
     char        filepath[255];
-    char        local_uid[32];
+    char        local_uid[64];
     uint64_t    id;
 } ws_upload;
 
 typedef struct
 {
-    char        local_uid[32];
+    char        local_uid[64];
     uint64_t    id;
     int32_t     chunk_checksum;
     uint64_t    chunk_index;
@@ -95,8 +93,6 @@ extern std::function<void()> kz_ws_ack_client_info(JSON_Object* obj);
 
 extern std::function<void()> kz_ws_ack_add_record(JSON_Object* obj);
 extern std::function<void()> kz_ws_ack_del_record(JSON_Object* obj);
-
-extern std::function<void()> kz_ws_ack_add_replay(JSON_Object* obj);
 extern std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj);
 
 extern std::function<void()> kz_ws_ack_file(JSON_Object* obj);

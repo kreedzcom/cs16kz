@@ -20,8 +20,11 @@
 
 edict_t* g_pEdicts = nullptr;
 player_t g_players[33];
+
+int g_msg_teaminfo = -1;
 bool g_initialiazed = false;
 bool g_early_mapchange = false;
+float g_wait_after_load = 0.0f;
 
 bool kz_init_rehooks(void);
 bool kz_init_detours(void);
@@ -46,8 +49,6 @@ void FN_AMXX_ATTACH()
 
     kz_ws_register(WSMessageType::add_record,  kz_ws_ack_add_record);
     kz_ws_register(WSMessageType::del_record,  kz_ws_ack_del_record);
-
-    kz_ws_register(WSMessageType::add_replay,  kz_ws_ack_add_replay);
     kz_ws_register(WSMessageType::get_replay,  kz_ws_ack_get_replay);
 
     kz_ws_register(WSMessageType::file,        kz_ws_ack_file);
@@ -55,17 +56,23 @@ void FN_AMXX_ATTACH()
     kz_api_url      = register_cvar("kz_api_url",  "", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
     kz_api_token    = register_cvar("kz_api_token","", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
 
-    kz_api_log_send = register_cvar("kz_api_log_send", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_log_recv = register_cvar("kz_api_log_recv", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_log_send   = register_cvar("kz_api_log_send",   "1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_log_recv   = register_cvar("kz_api_log_recv",   "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_log_upload = register_cvar("kz_api_log_upload", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_log_parse  = register_cvar("kz_api_log_parse",  "1", FCVAR_EXTDLL | FCVAR_SPONLY);
 
+    kz_api_retries_max    = register_cvar("kz_api_retries_max",    "4", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_retries_delay  = register_cvar("kz_api_retries_delay",  "5", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_replays_clevel = register_cvar("kz_api_replays_clevel", "10", FCVAR_EXTDLL | FCVAR_SPONLY);
+
+    kz_api_bot_prefix = register_cvar("kz_api_bot_prefix", "[SR]", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_add_natives();
 }
 void FN_AMXX_PLUGINSLOADED()
 {
     g_data_dir = std::filesystem::path("cstrike") / MF_GetLocalInfo("amxx_datadir", "addons/amxmodx/data");
     g_early_mapchange = false;
+    g_wait_after_load = 1.0f;
 
     if (!g_initialiazed)
     {
@@ -82,6 +89,7 @@ void FN_AMXX_PLUGINSLOADED()
         kz_storage_init();
         kz_ws_init();
         kz_rp_init();
+        kz_pb_init();
     }
     kz_rp_update_header();
     kz_api_add_forwards();
@@ -92,6 +100,7 @@ void FN_META_DETACH()
     if (g_initialiazed)
     {
         kz_rp_uninit();
+        kz_pb_uninit();
         kz_ws_uninit();
         kz_storage_uninit();
     }
@@ -109,15 +118,20 @@ void FN_StartFrame()
     kz_run_cvar_checker();
     kz_ws_run_tasks(5);
 
+    kz_pb_frame();
+
     RETURN_META(MRES_IGNORED);
 }
-void FN_ServerActivate(edict_t* pEdictList, int edictCount, int clientMax)
+void FN_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax)
 {
+    g_msg_teaminfo = GET_USER_MSG_ID(PLID, "TeamInfo", NULL);
     RETURN_META(MRES_IGNORED);
 }
 void FN_ServerDeactivate_Post(void)
 {
     g_pEdicts = nullptr;
+    kz_pb_server_deactivate_post();
+
     RETURN_META(MRES_IGNORED);
 }
 void FN_DispatchKeyValue(edict_t* pentKeyvalue, KeyValueData* pkvd)
@@ -134,7 +148,27 @@ int FN_DispatchSpawn(edict_t* pent)
     {
         g_pEdicts = (*g_engfuncs.pfnPEntityOfEntIndex)(0);
     }
+    kz_pb_spawn(pent);
     RETURN_META_VALUE(MRES_IGNORED, FALSE);
+}
+void FN_DispatchThink(edict_t* pent)
+{
+    kz_pb_think(pent);
+    RETURN_META(MRES_IGNORED);
+}
+int FN_AddToFullPack(struct entity_state_s *state, int e, edict_t *ent, edict_t *host, int hostflags, int player, unsigned char *pSet)
+{
+    kz_pb_addtofullpack(state, e, ent, host, hostflags, player, pSet);
+    RETURN_META_VALUE(MRES_IGNORED, 0);
+}
+int FN_CheckVisibility(const edict_t *entity, unsigned char *pset)
+{
+    int ret = kz_pb_check_visibility(entity, pset);
+    if (ret != -1)
+    {
+        return(ret);
+    }
+    RETURN_META_VALUE(MRES_IGNORED, 0);
 }
 void FN_ChangeLevel(const char *s1, const char *s2)
 {

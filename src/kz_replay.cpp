@@ -218,7 +218,10 @@ void kz_rp_set_cmd(int id, const usercmd_t* cmd)
     krp_frame* frame = reinterpret_cast<krp_frame*>(g_current_frame[id].data);
     frame->cmd.lerp_msec        = cmd->lerp_msec;
     frame->cmd.msec             = cmd->msec;
-    frame->cmd.viewangles       = cmd->viewangles;
+
+    frame->cmd.viewangles.x     = cmd->viewangles.x;
+    frame->cmd.viewangles.y     = cmd->viewangles.y;
+    frame->cmd.viewangles.z     = cmd->viewangles.z;
 
     frame->cmd.forwardmove      = cmd->forwardmove;
     frame->cmd.sidemove         = cmd->sidemove;
@@ -229,14 +232,27 @@ void kz_rp_set_cmd(int id, const usercmd_t* cmd)
     frame->cmd.weaponselect     = cmd->weaponselect;
 
     frame->cmd.impact_index     = cmd->impact_index;
-    frame->cmd.impact_position  = cmd->impact_position;
+
+    frame->cmd.impact_position.x  = cmd->impact_position.x;
+    frame->cmd.impact_position.y  = cmd->impact_position.y;
+    frame->cmd.impact_position.z  = cmd->impact_position.z;
 }
 void kz_rp_set_vars(int id, const entvars_t* vars)
 {
     krp_frame* frame = reinterpret_cast<krp_frame*>(g_current_frame[id].data);
-    frame->vars.origin        = vars->origin;
-    frame->vars.velocity      = vars->velocity;
-    frame->vars.v_angle       = vars->v_angle;
+
+    frame->vars.origin.x      = vars->origin.x;
+    frame->vars.origin.y      = vars->origin.y;
+    frame->vars.origin.z      = vars->origin.z;
+
+    frame->vars.velocity.x    = vars->velocity.x;
+    frame->vars.velocity.y    = vars->velocity.y;
+    frame->vars.velocity.z    = vars->velocity.z;
+
+    frame->vars.v_angle.x     = vars->v_angle.x;
+    frame->vars.v_angle.y     = vars->v_angle.y;
+    frame->vars.v_angle.z     = vars->v_angle.z;
+
     frame->vars.fixangle      = vars->fixangle;
     frame->vars.movetype      = vars->movetype;
     frame->vars.flags         = vars->flags;
@@ -286,6 +302,24 @@ static uint64_t kz_rp_timestamp_from_header(FILE* fp)
     }
     fseek(fp, current_pos, SEEK_SET);
     return ts;
+}
+std::string kz_rp_mapname_from_header(FILE* fp)
+{
+    if (!fp)
+    {
+        return "";
+    }
+
+    long current_pos = ftell(fp);
+    size_t name_offset = offsetof(krp_header, map.name);
+
+
+    char buffer[64] = {0};
+    fseek(fp, (long)name_offset, SEEK_SET);
+    fread(buffer, sizeof(char), 63, fp);
+    fseek(fp, current_pos, SEEK_SET);
+
+    return std::string(buffer);
 }
 static void kz_rp_write_frametype(FILE* fp, krp_packet* curr, uint8_t frametype)
 {
@@ -529,6 +563,7 @@ static void kz_rp_writer_thread(void)
 
                     std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / sig->steamid_short;
                     snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.c_str());
+                    snprintf(header.player.name, sizeof(header.player.name), "%s", sig->nickname);
                     snprintf(header.player.steamid, sizeof(header.player.steamid), "STEAM_%c:%c:%s", sig->steamid_short[0], sig->steamid_short[1], sig->steamid_short + 2);
 
                     s_fd[id] = fopen(s_filepath[id], "wb+");
@@ -638,23 +673,37 @@ static void kz_rp_writer_thread(void)
                     {
                         char new_path[255];
                         krp_signal* sig     = reinterpret_cast<krp_signal*>(s_curr->data);
-                        const char* mapname = g_header.map.name;
+                        std::string mapname = kz_rp_mapname_from_header(s_fd[id]);
 
-                        char uid_str[32];
+                        char uid_str[64];
                         char ts_str[16];
                         to_base36(kz_rp_timestamp_from_header(s_fd[id]), ts_str, sizeof(ts_str));
-                        snprintf(uid_str, sizeof(uid_str), "%s_%s", sig->steamid_short, ts_str);
+                        snprintf(uid_str, sizeof(uid_str), "%08u_%s_%s", static_cast<uint32_t>(sig->time * 1000.0f), sig->steamid_short, ts_str);
 
-                        std::filesystem::path npath = g_data_dir / "kz_global" / "replays" / mapname / uid_str;
-                        snprintf(new_path, sizeof(new_path), "%s.krpr", npath.c_str());
+                        std::filesystem::path npath = g_data_dir / "kz_global" / "replays" / uid_str;
+                        npath.replace_extension(".krpr");
+                        snprintf(new_path, sizeof(new_path), "%s", npath.c_str());
+
+                        fseek(s_fd[id], 0, SEEK_SET);
+
+                        krp_header temp_header;
+                        if (fread(&temp_header, sizeof(krp_header), 1, s_fd[id]) == 1)
+                        {
+                            strncpy(temp_header.player.name, sig->nickname, sizeof(temp_header.player.name) - 1);
+                            temp_header.player.name[sizeof(temp_header.player.name) - 1] = '\0';
+
+                            fseek(s_fd[id], 0, SEEK_SET);
+                            fwrite(&temp_header, sizeof(krp_header), 1, s_fd[id]);
+                            fflush(s_fd[id]);
+                        }
+
 
                         fclose(s_fd[id]);
                         s_fd[id] = nullptr;
 
-
                         if (rename(s_filepath[id], new_path) == 0)
                         {
-                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s.krpr", std::filesystem::relative(npath, g_data_dir).c_str());
+                            //kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s.krpr", std::filesystem::relative(npath, g_data_dir).c_str());
                         }
                         else
                         {
@@ -670,7 +719,7 @@ static void kz_rp_writer_thread(void)
 
                         json_object_dotset_string(data_obj, "player.nickname", sig->nickname);
                         json_object_dotset_string(data_obj, "player.steamid", steamid);
-                        json_object_dotset_string(data_obj, "map.name", mapname);
+                        json_object_dotset_string(data_obj, "map.name", mapname.c_str());
                         json_object_dotset_number(data_obj, "map.checksum", g_header.map.checksum);
                         json_object_dotset_number(data_obj, "run.time", sig->time);
                         json_object_dotset_number(data_obj, "run.checkpoints", 0);
@@ -720,11 +769,26 @@ static void kz_rp_upload_thread(void)
     {
         while (ws_upload* item = g_replay_upload_queue.front())
         {
-            // Lazy compression
-            FILE* fp = (item->filepath[strlen(item->filepath) - 1] == 'z') ? fopen(item->filepath, "rb") : kz_rp_compress_file(item->filepath);
+            std::filesystem::path pathname = item->filepath;
+            FILE* fp = nullptr;
+
+            if (pathname.extension() == ".krpz")
+            {
+                fp = fopen(pathname.c_str(), "rb");
+            }
+            else
+            {
+                fp = kz_rp_compress_file(pathname.c_str());
+                if (!fp)
+                {
+                    kz_log(&g_replay_upload_log, "[UPLOAD] Failed to compress file: %s", std::filesystem::relative(pathname, g_data_dir).c_str());
+                    g_replay_upload_queue.pop();
+                    continue;
+                }
+            }
             if (!fp)
             {
-                kz_log(&g_replay_upload_log, "[UPLOAD] Compression/Open failure:", strerror(errno));
+                kz_log(&g_replay_upload_log, "[UPLOAD] fopen failure: %s", strerror(errno));
                 g_replay_upload_queue.pop();
                 continue;
             }
@@ -757,7 +821,7 @@ static void kz_rp_upload_thread(void)
                     header->id             = item->id;
                     header->chunk_index    = i;
                     header->chunk_checksum = UTIL_CRC32(data_ptr, bytes);
-                    header->chunk_total    = total_chunks;
+                    header->chunk_total    = static_cast<uint64_t>(total_chunks);
                     memcpy(header->local_uid, item->local_uid, sizeof(header->local_uid));
 
                     g_websocket.sendBinary(std::string(buffer, sizeof(*header) + bytes));
