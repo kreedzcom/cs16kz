@@ -7,6 +7,7 @@
 #include "memtools/CDetour/detours.h"
 
 #include "pdata.h"
+#include "pm_defs.h"
 #include "kz_player.h"
 #include "kz_ws.h"
 #include "kz_util.h"
@@ -175,6 +176,15 @@ void FN_PlayerPreThink(edict_t* pEntity)
     int id = indexOfEdict(pEntity);
     if (!MF_IsPlayerBot(id))
     {
+    }
+    RETURN_META(MRES_IGNORED);
+}
+void FN_PM_Move(struct playermove_s *ppmove, int server)
+{
+    int id = ppmove->player_index;
+    if (!MF_IsPlayerBot(id))
+    {
+		kz_ac_pm_move(id, ppmove, server);
     }
     RETURN_META(MRES_IGNORED);
 }

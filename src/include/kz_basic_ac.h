@@ -3,5 +3,6 @@
 
 extern void kz_ac_frame(void);
 extern void kz_ac_cmd(int id, const usercmd_t* ucmd);
+void kz_ac_pm_move(int id, struct playermove_s *ppmove, int server);
 extern void kz_ac_postthink(int id, edict_t* pEdict);
 #endif
