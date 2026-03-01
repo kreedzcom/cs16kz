@@ -316,12 +316,21 @@ pub fn build(b: *std.Build) !void
 	
 	const cflagsBase = [_][]const u8{
 		"-std=c++17",
-		"-Wno-incompatible-pointer-types", // TODO: fix problems instead of disabling warning lol
 		"-fno-sanitize=pointer-overflow", // fix for STRING() hlsdk macro
 		"-fsanitize-recover=undefined",   // dont crash :)
 	};
+	const cflagsWarnings = [_][]const u8{
+		// Enable warnings and escale to errors (zig doesnt catch warnings)
+		"-Wall", "-Wextra", "-Werror",
+
+		// Disable a bunch of hlsdk/amxx warnings
+		"-Wno-unused-parameter",
+		"-Wno-missing-field-initializers",  // (amxxmodule.cpp): missing field ... initializer
+		"-Wno-deprecated-copy",             // (dlls/vector.h): implicit copy assignment operator .. is deprecated
+	};
 	var cflags = std.ArrayList([]const u8).empty;
 	try cflags.appendSlice(b.allocator, &cflagsBase);
+	try cflags.appendSlice(b.allocator, &cflagsWarnings);
 	
 	if (target.result.os.tag == .windows)
 	{

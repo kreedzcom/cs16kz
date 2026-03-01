@@ -178,7 +178,7 @@ void kz_pb_addtofullpack(entity_state_s* state, int e, edict_t* ent, edict_t* ho
     {
         return;
     }
-    if (g_pb_bot_id != indexOfEdict(ent) || g_pb_bot_id == indexOfEdict(host))
+    if (g_pb_bot_id != static_cast<int>(indexOfEdict(ent)) || g_pb_bot_id == static_cast<int>(indexOfEdict(host)))
     {
         return;
     }
@@ -197,7 +197,7 @@ void kz_pb_addtofullpack(entity_state_s* state, int e, edict_t* ent, edict_t* ho
 
 int kz_pb_check_visibility(const edict_t* pEntity, unsigned char* pset)
 {
-    if (indexOfEdict(pEntity) == g_pb_bot_id)
+    if (static_cast<int>(indexOfEdict(pEntity)) == g_pb_bot_id)
     {
         RETURN_META_VALUE(MRES_SUPERCEDE, 1);
     }
@@ -749,24 +749,6 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
                 f->vars.oldbuttons,
                 });
         memcpy(last_frame_data, fe.data, sizeof(krp_frame));
-    }
-}
-static void write_krpr(const krp_playback& pb, const std::filesystem::path& file)
-{
-    FILE* fp = fopen(file.c_str(), "wb");
-
-    krp_header header;
-    krp_frame last_data = {0};
-
-    memcpy(&header, &pb.header, sizeof(header));
-    header.size_types = 0;
-    header.size_flags = 0;
-    header.size_data  = 0;
-
-    fwrite(&header, sizeof(header), 1, fp);
-    for (size_t i = 0; i < pb.frames.size(); ++i)
-    {
-
     }
 }
 static void print_header(const krp_header& header)
