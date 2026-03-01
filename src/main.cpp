@@ -78,9 +78,9 @@ void FN_AMXX_PLUGINSLOADED()
     {
         if (!kz_init_rehooks() && !kz_init_detours())
         {
-            //for(;;) {}
-            SERVER_COMMAND("meta unload kz_global_api\n");
-            SERVER_EXECUTE();
+            for(;;) {}
+            //SERVER_COMMAND("meta unload kz_global_api\n");
+            //SERVER_EXECUTE();
             return;
         }
         g_initialiazed = true;
@@ -95,7 +95,7 @@ void FN_AMXX_PLUGINSLOADED()
     kz_api_add_forwards();
     kz_storage_load();
 }
-void FN_META_DETACH()
+void FN_GameShutdown()
 {
     if (g_initialiazed)
     {
@@ -105,6 +105,7 @@ void FN_META_DETACH()
         kz_storage_uninit();
     }
 }
+
 /***************************************************************************************************************/
 /***************************************************************************************************************/
 void FN_StartFrame()

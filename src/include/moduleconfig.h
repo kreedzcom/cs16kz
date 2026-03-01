@@ -109,7 +109,7 @@
 // Meta attach
 //#define FN_META_ATTACH OnMetaAttach
 // Meta detach
-#define FN_META_DETACH OnMetaDetach
+//#define FN_META_DETACH OnMetaDetach
 
 // (wd) are Will Day's notes
 // - GetEntityAPI2 functions
@@ -509,7 +509,7 @@
 // #define FN_GetPlayerAuthId_Post				GetPlayerAuthId_Post
 
 // #define FN_OnFreeEntPrivateData				OnFreeEntPrivateData				
-// #define FN_GameShutdown						GameShutdown
+#define FN_GameShutdown						GameShutdown
 // #define FN_ShouldCollide						ShouldCollide
 #define FN_CvarValue2					CvarValue2
 

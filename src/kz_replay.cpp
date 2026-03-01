@@ -210,6 +210,9 @@ void kz_rp_uninit()
 {
     g_krp_running.store(false);
 
+    g_replay_writer_cv.notify_all();
+    g_replay_upload_cv.notify_all();
+
     g_replay_writer_thread.join();
     g_replay_upload_thread.join();
 }

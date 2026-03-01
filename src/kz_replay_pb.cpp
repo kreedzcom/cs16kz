@@ -60,6 +60,7 @@ void kz_pb_init(void)
 void kz_pb_uninit(void)
 {
     g_pb_running.store(false);
+    g_pb_parse_cv.notify_all();
     g_pb_parse_thread.join();
 }
 void kz_pb_frame(void)
