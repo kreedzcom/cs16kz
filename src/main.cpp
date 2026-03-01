@@ -97,6 +97,7 @@ void FN_AMXX_PLUGINSLOADED()
 }
 void FN_GameShutdown()
 {
+    kz_log_flush(-1);
     if (g_initialiazed)
     {
         kz_rp_uninit();
@@ -114,7 +115,7 @@ void FN_StartFrame()
     {
         RETURN_META(MRES_IGNORED);
     }
-    kz_log_flush();
+    kz_log_flush(50000000);
     kz_ac_frame();
     kz_run_cvar_checker();
     kz_ws_run_tasks(5);

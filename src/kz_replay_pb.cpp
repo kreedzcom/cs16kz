@@ -34,7 +34,7 @@ static std::condition_variable g_pb_parse_cv;
 static std::atomic<bool> g_pb_running;
 static std::atomic<bool> g_pb_pending_data;
 
-static kz::queue<std::string> g_pb_parse_log(64);
+static kz::queue<log_entry> g_pb_parse_log(64);
 static kz::queue<std::filesystem::path> g_pb_parse_queue(4);
 static std::vector<krp_playback> g_pb_data;
 

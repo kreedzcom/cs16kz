@@ -11,7 +11,7 @@ std::string g_hello_msg;
 kz::websocket g_websocket;
 std::atomic<WSState> g_websocket_state;
 
-kz::queue<std::string> g_ws_log(64);
+kz::queue<log_entry> g_ws_log(64);
 kz::queue<std::shared_ptr<std::string>> g_outgoing_queue(64);
 kz::queue<std::function<void()>> g_incoming_queue(64);
 

@@ -9,7 +9,7 @@
 #include "kz_storage.h"
 
 std::thread::id g_main_thread;
-std::vector<kz::queue<std::string>*> g_log_queues;
+std::vector<kz::queue<log_entry>*> g_log_queues;
 
 const unsigned int kCRCTable[256] = {
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
@@ -131,40 +131,61 @@ void kz_log_init(std::thread::id t)
 {
     g_main_thread = t;
 }
-void kz_log_addq(kz::queue<std::string>* queue)
+void kz_log_addq(kz::queue<log_entry>* queue)
 {
     g_log_queues.push_back(queue);
 }
-void kz_log_flush(void)
+void kz_log_flush(uint64_t nano_delay)
 {
-    for (auto* q : g_log_queues)
+    auto now = std::chrono::steady_clock::now();
+    uint64_t cutoff = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count() - nano_delay;
+
+    while (true)
     {
-        std::string* message;
-        while (q->front())
+        log_entry* oldest_entry = nullptr;
+        kz::queue<log_entry>* best_q = nullptr;
+
+        for (auto* q : g_log_queues)
         {
-            message = q->front();
-            kz_log(nullptr, "%s", message->c_str());
-            q->pop();
+            log_entry* current = q->front();
+            if (current && current->nano_ts < cutoff)
+            {
+                if (!oldest_entry || current->nano_ts < oldest_entry->nano_ts)
+                {
+                    oldest_entry = current;
+                    best_q = q;
+                }
+            }
+        }
+
+        if (oldest_entry)
+        {
+            MF_Log("%s", oldest_entry->message);
+            best_q->pop();
+        }
+        else
+        {
+            break;
         }
     }
 }
-void kz_log(kz::queue<std::string>* queue, const char* fmt, ...)
+void kz_log(kz::queue<log_entry>* queue, const char* fmt, ...)
 {
-    char buffer[256];
-    va_list args;
+    log_entry entry;
+    auto now = std::chrono::steady_clock::now();
+    entry.nano_ts = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
 
+    va_list args;
     va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    vsnprintf(entry.message, sizeof(entry.message), fmt, args);
     va_end(args);
 
-    if(std::this_thread::get_id() == g_main_thread)
+    if(queue == nullptr || std::this_thread::get_id() == g_main_thread)
     {
-        MF_Log("%s", buffer);
+        MF_Log("%s", entry.message);
         return;
     }
-
-    assert(queue);
-    while(!queue->try_push(buffer))
+    while(!queue->try_push(std::move(entry)))
     {
         std::this_thread::yield();
     }

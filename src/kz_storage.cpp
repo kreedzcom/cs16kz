@@ -20,7 +20,7 @@ std::vector<retry_msg> g_retry_queue(64);
 
 static thread_local SQLite::Database* kz_storage_database = nullptr;
 static thread_local bool kz_storage_initialiazed = false;
-static thread_local kz::queue<std::string> g_storage_log(64);
+static thread_local kz::queue<log_entry> g_storage_log(64);
 
 void kz_storage_init(void)
 {

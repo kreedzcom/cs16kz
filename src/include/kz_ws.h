@@ -59,12 +59,18 @@ typedef struct
 
 #pragma pack(pop)
 
+typedef struct {
+    uint64_t nano_ts;
+    char message[512];
+} log_entry;
+
+
 typedef std::function<void()> (*WSMessageFunc)(JSON_Object*);
 extern WSMessageFunc g_callback_table[];
 
 extern kz::websocket g_websocket;
 extern std::atomic<WSState> g_websocket_state;
-extern kz::queue<std::string> g_ws_log;
+extern kz::queue<log_entry> g_ws_log;
 extern kz::queue<std::shared_ptr<std::string>> g_outgoing_queue;
 extern kz::queue<std::function<void()>> g_incoming_queue;
 

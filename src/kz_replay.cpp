@@ -24,8 +24,8 @@ krp_header g_header;
 krp_packet g_current_frame[33];
 std::atomic<bool> g_krp_running;
 
-kz::queue<std::string> g_replay_writer_log(64);
-kz::queue<std::string> g_replay_upload_log(64);
+kz::queue<log_entry> g_replay_writer_log(64);
+kz::queue<log_entry> g_replay_upload_log(64);
 
 kz::queue<krp_packet> g_replay_writer_queue(4096); // (32 players * 100 fps each = 3096 + some additonal room)
 kz::queue<ws_upload> g_replay_upload_queue(64);
@@ -706,7 +706,7 @@ static void kz_rp_writer_thread(void)
 
                         if (rename(s_filepath[id], new_path) == 0)
                         {
-                            //kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s.krpr", std::filesystem::relative(npath, g_data_dir).c_str());
+                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s", std::filesystem::relative(npath, g_data_dir).c_str());
                         }
                         else
                         {

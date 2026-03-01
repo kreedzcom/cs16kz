@@ -10,9 +10,9 @@ extern void fm_give_item(edict_t* ed, const char* item);
 extern std::string formay_bytes(uint64_t bytes);
 
 extern void kz_log_init(std::thread::id t);
-extern void kz_log_addq(kz::queue<std::string>* queue);
-extern void kz_log_flush(void);
-extern void kz_log(kz::queue<std::string>* queue, const char* fmt, ...);
+extern void kz_log_addq(kz::queue<log_entry>* queue);
+extern void kz_log_flush(uint64_t nano_delay);
+extern void kz_log(kz::queue<log_entry>* queue, const char* fmt, ...);
 
 extern uint32_t UTIL_CRC32(const void *data, size_t dataLength);
 extern uint32_t UTIL_CRC32_Incremental(const void *data, size_t dataLength, uint32_t currentCrc);
