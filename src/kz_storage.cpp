@@ -159,7 +159,6 @@ void kz_storage_clear()
         }
     }
 
-    g_retry_queue.clear();
     kz_storage_batch_delete(delete_list[0], StorageTable::outgoing_queue);
     //kz_storage_batch_delete(delete_list[1], StorageTable::upload_queue);
 }
