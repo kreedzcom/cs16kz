@@ -147,10 +147,10 @@ static cell AMX_NATIVE_CALL kz_api_run_unpaused(AMX* amx, cell* params)
     return (id ? kz_rp_run_unpaused(id) : 0);
 }
 
-/* native kz_api_run_rejected(id) */
+/* native kz_api_run_rejected(id, bool:delete_file) */
 static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 1))
+    if (!validate_params(amx, params, 2))
     {
         return 0;
     }
