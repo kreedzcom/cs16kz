@@ -330,13 +330,37 @@ std::function<void()> kz_ws_ack_file(JSON_Object* obj)
             fclose(fp);
             fp = nullptr;
 
-            std::filesystem::path n_filepath = g_data_dir / "kz_global" / "replays" / mapname / local_uid;
-            std::filesystem::remove(filepath);
-
             filepath.replace_extension(".krpz");
+            if (!std::filesystem::exists(filepath))
+            {
+                kz_log(&g_ws_log, "[ACK] Compressed replay not found: %s", std::filesystem::relative(filepath, g_data_dir).c_str());
+                return nullptr;
+            }
+
+            std::filesystem::path n_filepath = g_data_dir / "kz_global" / "replays" / mapname / local_uid;
             n_filepath.replace_extension(".krpz");
 
-            std::filesystem::rename(filepath, n_filepath);
+            std::error_code ec;
+            std::filesystem::create_directories(n_filepath.parent_path(), ec);
+            if (ec)
+            {
+                kz_log(&g_ws_log, "[ACK] Failed to create replay directory: %s", ec.message().c_str());
+                return nullptr;
+            }
+
+            std::filesystem::rename(filepath, n_filepath, ec);
+            if (ec)
+            {
+                kz_log(&g_ws_log, "[ACK] Failed to move replay %s -> %s: %s",
+                    std::filesystem::relative(filepath, g_data_dir).c_str(),
+                    std::filesystem::relative(n_filepath, g_data_dir).c_str(),
+                    ec.message().c_str());
+                return nullptr;
+            }
+
+            std::filesystem::path raw_path = g_data_dir / "kz_global" / "replays" / local_uid;
+            raw_path.replace_extension(".krpr");
+            std::filesystem::remove(raw_path, ec);
 
         }
         {
