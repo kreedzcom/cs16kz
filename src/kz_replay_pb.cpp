@@ -183,6 +183,10 @@ void kz_pb_addtofullpack(entity_state_s* state, int e, edict_t* ent, edict_t* ho
     {
         return;
     }
+    if (!g_pb_bot_data || g_pb_bot_data->frames.empty())
+    {
+        return;
+    }
 
     int32_t index = g_pb_bot_data->frame_counter;
 
@@ -296,7 +300,14 @@ static void kz_bot_create(const char* nickname)
 }
 static void kz_bot_think(edict_t* pent)
 {
+    if (!g_pb_bot_data || g_pb_bot_data->frames.size() < 2)
+    {
+        return;
+    }
+
     int32_t index       = g_pb_bot_data->frame_counter;
+    int32_t next_index  = (index + 1 < static_cast<int32_t>(g_pb_bot_data->frames.size())) ? (index + 1) : index;
+
     int32_t flags       = g_pb_bot_data->frames[index].flags;
     int32_t button      = g_pb_bot_data->frames[index].button;
     int32_t oldbuttons  = g_pb_bot_data->frames[index].oldbuttons;
@@ -311,8 +322,8 @@ static void kz_bot_think(edict_t* pent)
     float old_x = (origin.x);
     float old_y = (origin.y);
 
-    origin  = g_pb_bot_data->frames[index + 1].origin;
-    v_angle = g_pb_bot_data->frames[index + 1].v_angle;
+    origin  = g_pb_bot_data->frames[next_index].origin;
+    v_angle = g_pb_bot_data->frames[next_index].v_angle;
     float sqr_speed = (origin.x - old_x) * (origin.x - old_x) + (origin.y - old_y) * (origin.y - old_y);
 
     pent->v.velocity.x = (origin.x - old_x) * 100.0f;
