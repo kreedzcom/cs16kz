@@ -118,7 +118,7 @@ int kz_rp_run_unpaused(int id)
 
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
     snprintf(sig->steamid_short, sizeof(sig->steamid_short), "%s", g_players[id].steamid_short);
-    snprintf(sig->nickname, sizeof(sig->nickname), "%s", g_players[id].steamid_short);
+    snprintf(sig->nickname, sizeof(sig->nickname), "%s", g_players[id].nickname);
 
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
