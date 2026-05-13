@@ -296,12 +296,20 @@ static uint64_t kz_rp_timestamp_from_header(FILE* fp)
     }
 
     long current_pos = ftell(fp);
-    size_t ts_offset = offsetof(krp_header, timestamp);
-
-    uint64_t ts = 0;
-    if (fseek(fp, ts_offset, SEEK_SET) == 0)
+    if (current_pos < 0)
     {
-        fread(&ts, sizeof(uint64_t), 1, fp);
+        return 0;
+    }
+
+    size_t ts_offset = offsetof(krp_header, timestamp);
+    uint64_t ts = 0;
+
+    if (fseek(fp, (long)ts_offset, SEEK_SET) == 0)
+    {
+        if (fread(&ts, sizeof(uint64_t), 1, fp) != 1)
+        {
+            ts = 0;
+        }
     }
     fseek(fp, current_pos, SEEK_SET);
     return ts;
@@ -314,12 +322,19 @@ std::string kz_rp_mapname_from_header(FILE* fp)
     }
 
     long current_pos = ftell(fp);
+    if (current_pos < 0)
+    {
+        return "";
+    }
+
     size_t name_offset = offsetof(krp_header, map.name);
-
-
     char buffer[64] = {0};
-    fseek(fp, (long)name_offset, SEEK_SET);
-    fread(buffer, sizeof(char), 63, fp);
+
+    if (fseek(fp, (long)name_offset, SEEK_SET) != 0 || fread(buffer, sizeof(char), 63, fp) == 0)
+    {
+        fseek(fp, current_pos, SEEK_SET);
+        return "";
+    }
     fseek(fp, current_pos, SEEK_SET);
 
     return std::string(buffer);
