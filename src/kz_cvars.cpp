@@ -62,7 +62,7 @@ float g_last_query_time[33];
 void kz_run_cvar_checker(void)
 {    
     edict_t* pEntity = nullptr;
-    for (int i = 1; i < gpGlobals->maxClients; ++i)
+    for (int i = 1; i <= gpGlobals->maxClients; ++i)
     {
         pEntity = edictByIndex(i);
         if (!FNullEnt(pEntity) && MF_IsPlayerIngame(i) && !MF_IsPlayerBot(i))
