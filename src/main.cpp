@@ -30,6 +30,7 @@ bool kz_init_rehooks(void);
 bool kz_init_detours(void);
 
 void (*Cvar_DirectSet_Actual)(cvar_t* var, const char* value);
+static CDetour* g_detour_Cvar_DirectSet = nullptr;
 /***************************************************************************************************************/
 /***************************************************************************************************************/
 int FN_AMXX_CHECKGAME(const char* game)
@@ -104,6 +105,11 @@ void FN_GameShutdown()
         kz_pb_uninit();
         kz_ws_uninit();
         kz_storage_uninit();
+    }
+    if (g_detour_Cvar_DirectSet)
+    {
+        g_detour_Cvar_DirectSet->DisableDetour();
+        g_detour_Cvar_DirectSet = nullptr;
     }
 }
 
@@ -334,7 +340,7 @@ bool kz_init_detours(void)
         return false;
     }
 
-    CDetour* detour_Cvar_DirectSet = CDetourManager::CreateDetour((void*)&DT_Cvar_DirectSet, (void**)&Cvar_DirectSet_Actual, address);
-    detour_Cvar_DirectSet->EnableDetour();
+    g_detour_Cvar_DirectSet = CDetourManager::CreateDetour((void*)&DT_Cvar_DirectSet, (void**)&Cvar_DirectSet_Actual, address);
+    g_detour_Cvar_DirectSet->EnableDetour();
     return true;
 }
