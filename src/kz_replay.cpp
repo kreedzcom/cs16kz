@@ -565,7 +565,7 @@ static void kz_rp_writer_thread(void)
                     header.timestamp = sig->ts;
 
                     std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / sig->steamid_short;
-                    snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.c_str());
+                    snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.string().c_str());
                     snprintf(header.player.name, sizeof(header.player.name), "%s", sig->nickname);
                     snprintf(header.player.steamid, sizeof(header.player.steamid), "STEAM_%c:%c:%s", sig->steamid_short[0], sig->steamid_short[1], sig->steamid_short + 2);
 
@@ -631,7 +631,7 @@ static void kz_rp_writer_thread(void)
                     const char* mapname = g_header.map.name;
 
                     std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / sig->steamid_short;
-                    snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.c_str());
+                    snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.string().c_str());
 
                     if (s_fd[id])
                     {
@@ -685,7 +685,7 @@ static void kz_rp_writer_thread(void)
 
                         std::filesystem::path npath = g_data_dir / "kz_global" / "replays" / uid_str;
                         npath.replace_extension(".krpr");
-                        snprintf(new_path, sizeof(new_path), "%s", npath.c_str());
+                        snprintf(new_path, sizeof(new_path), "%s", npath.string().c_str());
 
                         fseek(s_fd[id], 0, SEEK_SET);
 
@@ -777,11 +777,11 @@ static void kz_rp_upload_thread(void)
 
             if (pathname.extension() == ".krpz")
             {
-                fp = fopen(pathname.c_str(), "rb");
+                fp = fopen(pathname.string().c_str(), "rb");
             }
             else
             {
-                fp = kz_rp_compress_file(pathname.c_str());
+                fp = kz_rp_compress_file(pathname.string().c_str());
                 if (!fp)
                 {
                     kz_log(&g_replay_upload_log, "[UPLOAD] Failed to compress file: %s", std::filesystem::relative(pathname, g_data_dir).c_str());

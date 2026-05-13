@@ -500,7 +500,7 @@ void kz_pb_parser_thread(void)
             krp_playback pb_data = {};
             size_t rsize = 0;
 
-            FILE* fp = fopen(file->c_str(), "rb");
+            FILE* fp = fopen(file->string().c_str(), "rb");
             if (fp)
             {
                 fseek(fp, 0, SEEK_END);
@@ -508,7 +508,8 @@ void kz_pb_parser_thread(void)
                 if (size)
                 {
                     std::vector<uint8_t> buffer(static_cast<size_t>(size));
-                    const char* ext = file->extension().c_str();
+                    std::string str_ext = file->extension().string();
+                    const char* ext = str_ext.c_str();
 
                     rewind(fp);
                     fread(buffer.data(), 1, size, fp);

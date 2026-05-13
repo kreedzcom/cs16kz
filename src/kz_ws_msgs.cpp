@@ -92,7 +92,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                         {
                             replay.replace_extension(".krpr");
                         }
-                        snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.c_str());
+                        snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
 
                         if (std::filesystem::exists(replay))
                         {
@@ -259,7 +259,7 @@ std::function<void()> kz_ws_ack_add_record(JSON_Object* obj)
      replay.replace_extension(".krpr");
 
      snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", local_uid);
-     snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.c_str());
+     snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
 
      if (std::filesystem::exists(replay))
      {
@@ -320,7 +320,7 @@ std::function<void()> kz_ws_ack_file(JSON_Object* obj)
             std::filesystem::path filepath = g_data_dir / "kz_global" / "replays" / local_uid;
             filepath.replace_extension(".krpr");
 
-            FILE* fp = fopen(filepath.c_str(), "rb");
+            FILE* fp = fopen(filepath.string().c_str(), "rb");
             if (!fp)
             {
                 return nullptr;
@@ -366,7 +366,7 @@ std::function<void()> kz_ws_ack_file(JSON_Object* obj)
             if (!mapname.empty() && FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
             {
                 std::filesystem::path file = kz_pb_find_fastest(mapname.c_str());
-                if (!file.empty() && !FStrEq(file.filename().c_str(), g_pb_bot_data->filepath.filename().c_str()))
+                if (!file.empty() && !FStrEq(file.filename().string().c_str(), g_pb_bot_data->filepath.filename().string().c_str()))
                 {
                     kz_pb_parse_file_async(file);
                 }
