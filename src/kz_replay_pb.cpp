@@ -519,8 +519,25 @@ void kz_pb_parser_thread(void)
                         parse_playback(pb_data, buffer, *file);
 
                         pb_data.filepath = std::filesystem::path(*file);
-                        std::string ms_str = file->filename().string().substr(0, 8);
-                        uint32_t ms_total = stoul(ms_str);
+                        std::string filename = file->filename().string();
+                        if (filename.size() < 8)
+                        {
+                            kz_log(&g_pb_parse_log, "[PARSE] Filename too short to extract time: %s", filename.c_str());
+                            g_pb_parse_queue.pop();
+                            continue;
+                        }
+                        std::string ms_str = filename.substr(0, 8);
+                        uint32_t ms_total = 0;
+                        try
+                        {
+                            ms_total = static_cast<uint32_t>(std::stoul(ms_str));
+                        }
+                        catch (const std::exception& e)
+                        {
+                            kz_log(&g_pb_parse_log, "[PARSE] Failed to parse time from filename '%s': %s", filename.c_str(), e.what());
+                            g_pb_parse_queue.pop();
+                            continue;
+                        }
 
                         int minutes = (ms_total / 60000);
                         int seconds = (ms_total % 60000) / 1000;
