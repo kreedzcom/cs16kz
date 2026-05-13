@@ -7,20 +7,10 @@
 #include <kz_global_api_version>
 
 /**
- * Not implemented
- */
-forward kz_api_on_record_added(global_rec_id, ref_id[]);
-
-/**
- * Not implemented
- */
-forward kz_api_on_replay_downloaded(global_rec_id, filepath[]);
-
-/**
  * Requests map details for a specific map.
  *
  * @note The handler function should follow this signature:
- * public handler(mapname[], wr[], map_props[3]);
+ * public handler(mapname[], wr[], sr[], map_props[3]);
  *
  * @note map_props[3] layout:
  * [0] = map type       (KZM_BHOP - KZM_SPECIAL)
@@ -33,16 +23,6 @@ forward kz_api_on_replay_downloaded(global_rec_id, filepath[]);
  * @return              1 on success, 0 otherwise
  */
 native kz_api_get_map_details(mapname[], handler[]);
-
-/**
- * Not implemented
- */
-native kz_api_del_record(global_rec_id);
-
-/**
- * Not implemented
- */
-native kz_api_get_replay(global_rec_id, filepath[]);
 
 /**
  * Notifies the API that a player has started a new run.
