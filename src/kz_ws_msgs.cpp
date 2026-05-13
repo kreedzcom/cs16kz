@@ -309,7 +309,7 @@ std::function<void()> kz_ws_ack_file(JSON_Object* obj)
     ACK_CHECK_MISSING(data.local_uid);
 
     char local_uid[64] = {0};
-    uint64 id = json_object_dotget_number(obj, "data.id");
+    uint64_t id = json_object_dotget_number(obj, "data.id");
     bool status = json_object_dotget_boolean(obj, "data.status");
 
     snprintf(local_uid, sizeof(local_uid), "%s", json_object_dotget_string(obj, "data.local_uid"));
