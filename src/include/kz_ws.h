@@ -83,7 +83,7 @@ extern void kz_ws_uninit(void);
 extern void kz_ws_start(std::string url, std::string token);
 extern void kz_ws_stop(void);
 
-extern void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& output, int64_t msg);
+extern void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& output, int64_t msg, kz::queue<log_entry>* log_queue = &g_ws_log);
 extern void kz_ws_queue_msg(std::shared_ptr<std::string> msg, int64_t msg_id);
 extern void kz_ws_send_msg(std::string& msg, int64_t msg_id);
 
