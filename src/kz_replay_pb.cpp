@@ -574,7 +574,16 @@ void kz_pb_parser_thread(void)
 /***************************************************************************************************************/
 static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, const std::filesystem::path& file)
 {
-    std::vector<uint8_t> d_buffer(ZSTD_getFrameContentSize(src.data(), src.size()));
+    unsigned long long frame_size = ZSTD_getFrameContentSize(src.data(), src.size());
+    if (frame_size == ZSTD_CONTENTSIZE_ERROR || frame_size == ZSTD_CONTENTSIZE_UNKNOWN)
+    {
+        if (kz_api_log_parse->value > 0.0f)
+        {
+            kz_log(&g_pb_parse_log, "[PARSE] Could not determine decompressed size for: %s", std::filesystem::relative(file, g_data_dir).c_str());
+        }
+        return;
+    }
+    std::vector<uint8_t> d_buffer(static_cast<size_t>(frame_size));
     size_t d_size = ZSTD_decompress(d_buffer.data(), d_buffer.size(), src.data(), src.size());
 
     if (ZSTD_isError(d_size))
