@@ -135,7 +135,7 @@ int kz_rp_run_rejected(int id, bool delete_file)
     item.type = KRP_SIGNAL_REJECT;
 
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
-    sig->delete_file = true;
+    sig->delete_file = delete_file;
 
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
