@@ -30,6 +30,12 @@
 #define MODULE_VERSION_MINOR 1
 #define MODULE_VERSION "0.1.0"
 
+// MD5 checksum of the compiled Linux binary (32 hex chars = 16 bytes).
+// Set via -DMODULE_CHECKSUM=\"<md5hex>\" in the build system after linking.
+#ifndef MODULE_CHECKSUM
+#define MODULE_CHECKSUM ""
+#endif
+
 #define MODULE_NAME "[KZ] Global API"
 #define MODULE_AUTHOR "fxr"
 #define MODULE_URL ""
@@ -129,7 +135,7 @@
 // #define FN_RestoreGlobalState		RestoreGlobalState			/* pfnRestoreGlobalState() */
 // #define FN_ResetGlobalState			ResetGlobalState			/* pfnResetGlobalState() */
 // #define FN_ClientConnect				ClientConnect				/* pfnClientConnect()			(wd) Client has connected */
-// #define FN_ClientDisconnect			ClientDisconnect			/* pfnClientDisconnect()		(wd) Player has left the game */
+#define FN_ClientDisconnect			ClientDisconnect			/* pfnClientDisconnect()		(wd) Player has left the game */
 // #define FN_ClientKill				ClientKill					/* pfnClientKill()				(wd) Player has typed "kill" */
 // #define FN_ClientPutInServer			ClientPutInServer			/* pfnClientPutInServer()		(wd) Client is entering the game */
 // #define FN_ClientCommand				ClientCommand				/* pfnClientCommand()			(wd) Player has sent a command (typed or from a bind) */

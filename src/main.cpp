@@ -42,19 +42,14 @@ void FN_AMXX_ATTACH()
 {
     g_pEdicts = (*g_engfuncs.pfnPEntityOfEntIndex)(0);
     
-    kz_ws_register(WSMessageType::invalid,     kz_ws_ack_invalid);
+    kz_ws_register(0,                         kz_ws_ack_invalid);
+    kz_ws_register(WSMsgIn::HELLO_ACK,       kz_ws_ack_hello);
+    kz_ws_register(WSMsgIn::MAP_INFO,        kz_ws_ack_map_info);
+    kz_ws_register(WSMsgIn::PLAYER_JOIN_ACK, kz_ws_ack_player_join);
+    kz_ws_register(WSMsgIn::RECORD_ACK,      kz_ws_ack_record_ack);
+    kz_ws_register(WSMsgIn::FILE_ACK,        kz_ws_ack_file_ack);
 
-    kz_ws_register(WSMessageType::hello,       kz_ws_ack_hello);
-    kz_ws_register(WSMessageType::map_info,    kz_ws_ack_map_info);
-    kz_ws_register(WSMessageType::client_info, kz_ws_ack_client_info);
-
-    kz_ws_register(WSMessageType::add_record,  kz_ws_ack_add_record);
-    kz_ws_register(WSMessageType::del_record,  kz_ws_ack_del_record);
-    kz_ws_register(WSMessageType::get_replay,  kz_ws_ack_get_replay);
-
-    kz_ws_register(WSMessageType::file,        kz_ws_ack_file);
-
-    kz_api_url      = register_cvar("kz_api_url",  "", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
+    kz_api_url      = register_cvar("kz_api_url",  "wss://api.kreedz.com/ws/game", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
     kz_api_token    = register_cvar("kz_api_token","", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
 
     kz_api_log_send   = register_cvar("kz_api_log_send",   "1", FCVAR_EXTDLL | FCVAR_SPONLY);
@@ -92,6 +87,12 @@ void FN_AMXX_PLUGINSLOADED()
         kz_pb_init();
     }
     kz_rp_update_header();
+
+    if (g_initialiazed && g_websocket_state.load() == WSState::Connected)
+    {
+        kz_ws_event_map_change();
+    }
+
     kz_api_add_forwards();
     kz_storage_load();
 }
@@ -227,6 +228,19 @@ void FN_PlayerPostThink(edict_t* pEntity)
         kz_rp_set_vars(id, &(pEntity->v));
         kz_rp_write_frame(id);
         kz_ac_postthink(id, pEntity);
+    }
+    RETURN_META(MRES_IGNORED);
+}
+void FN_ClientDisconnect(edict_t* pEntity)
+{
+    int id = ENTINDEX(pEntity);
+    if (!MF_IsPlayerBot(id))
+    {
+        if (!g_early_mapchange)
+        {
+            kz_ws_event_client_disconnect(pEntity);
+        }
+        memset(&g_players[id], 0, sizeof(g_players[0]));
     }
     RETURN_META(MRES_IGNORED);
 }

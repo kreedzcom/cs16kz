@@ -5,15 +5,28 @@
 #include "kz_util.h"
 #include "kz_cvars.h"
 #include "kz_storage.h"
+#include "kz_replay.h"
 #include <chrono>
 
-std::string g_hello_msg;
+std::unordered_map<int, WSMessageFunc> g_callback_map;
 kz::websocket g_websocket;
 std::atomic<WSState> g_websocket_state;
 
 kz::queue<log_entry> g_ws_log(64);
 kz::queue<std::shared_ptr<std::string>> g_outgoing_queue(64);
 kz::queue<std::function<void()>> g_incoming_queue(64);
+
+static void kz_ws_build_hello(std::string& out)
+{
+    JSON_Value* data_val = json_value_init_object();
+    JSON_Object* data_obj = json_value_get_object(data_val);
+
+    json_object_set_string(data_obj, "plugin_version", MODULE_VERSION);
+    json_object_set_string(data_obj, "plugin_checksum", MODULE_CHECKSUM);
+    json_object_set_string(data_obj, "map_name", g_header.map.name);
+
+    kz_ws_build_msg(WSMsgOut::HELLO, data_val, out, 0);
+}
 
 static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
 {
@@ -24,7 +37,10 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             kz_storage_init();
             kz_log(&g_ws_log, "[WS] Connection established.");
             g_websocket_state.store(WSState::Connected);
-            kz_ws_send_msg(g_hello_msg, 0);
+
+            std::string hello;
+            kz_ws_build_hello(hello);
+            kz_ws_send_msg(hello, 0);
             break;
         }
         case ix::WebSocketMessageType::Message:
@@ -49,17 +65,18 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             }
 
             JSON_Object* root_obj = json_value_get_object(root_val);
-            int32_t msg_type = json_object_get_number(root_obj, "msg_type");
-            int64_t msg_id = json_object_get_number(root_obj, "msg_id");
+            int msg_type = (int)json_object_get_number(root_obj, "msg_type");
+            int64_t msg_id = (int64_t)json_object_get_number(root_obj, "msg_id");
 
             std::function<void()> fn = nullptr;
-            if (msg_type <= 0 || msg_type >= ectoi(WSMessageType::_MAX))
+            auto it = g_callback_map.find(msg_type);
+            if (it != g_callback_map.end())
             {
-                fn = g_callback_table[ectoi(WSMessageType::invalid)](root_obj);
+                fn = it->second(root_obj);
             }
             else
             {
-                fn = g_callback_table[msg_type](root_obj);
+                fn = kz_ws_ack_invalid(root_obj);
             }
 
             bool delete_msg = true;
@@ -120,16 +137,16 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             kz_log(&g_ws_log, "[WS] Error occured (%d): %s", msg->errorInfo.http_status, msg->errorInfo.reason.c_str());
             switch(msg->errorInfo.http_status)
             {
-                case 401: // Unauthorized
-                case 403: // Forbidden
+                case 401:
+                case 403:
                 {
                     g_websocket.disableAutomaticReconnection();
                     g_websocket_state.store(WSState::Disconnected);
                     break;
                 }
-                case 429: // Too Many Requests
-                case 500: // Internal Server Error aka gLp fucked up.
-                case 502: // Bad gateway
+                case 429:
+                case 500:
+                case 502:
                 {
                     g_websocket.setMinWaitBetweenReconnectionRetries(10000);
                     g_websocket.setMaxWaitBetweenReconnectionRetries(30000);
@@ -150,23 +167,6 @@ void kz_ws_init()
 {
     kz_log_addq(&g_ws_log);
     ix::initNetSystem();
-
-    JSON_Value* data_val = json_value_init_object();
-    JSON_Object* data_obj = json_value_get_object(data_val);
-
-    char szIP[16];
-    char szPort[6];
-    const char* addr = CVAR_GET_STRING("net_address");
-    split_net_address(addr, szIP, sizeof(szIP), szPort, sizeof(szPort));
-
-    json_object_dotset_string(data_obj, "plugin.version", MODULE_VERSION);
-    //json_object_dotset_string(data_obj, "plugin.checksum", MODULE_CHECKSUM);
-
-    json_object_dotset_string(data_obj, "server.hostname", CVAR_GET_STRING("hostname"));
-    json_object_dotset_string(data_obj, "server.address", szIP);
-    json_object_dotset_string(data_obj, "server.port", szPort);
-
-    kz_ws_build_msg(WSMessageType::hello, data_val, g_hello_msg, (int64_t)0);
 }
 void kz_ws_uninit(void)
 {
@@ -198,13 +198,13 @@ void kz_ws_stop(void)
 {
     g_websocket.stop();
 }
-void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& msg, int64_t msg_id, kz::queue<log_entry>* log_queue)
+void kz_ws_build_msg(int type, JSON_Value* data_val, std::string& msg, int64_t msg_id, kz::queue<log_entry>* log_queue)
 {
     JSON_Value* root_val = json_value_init_object();
     JSON_Object* root_obj = json_value_get_object(root_val);
 
-    json_object_set_number(root_obj, "msg_type", ectoi(type));
-    json_object_set_number(root_obj, "msg_id", msg_id);
+    json_object_set_number(root_obj, "msg_type", type);
+    json_object_set_number(root_obj, "msg_id", (double)msg_id);
 
     data_val ? json_object_set_value(root_obj, "data", data_val) : json_object_set_null(root_obj, "data");
 
@@ -216,7 +216,7 @@ void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& msg,
     }
     else
     {
-        kz_log(log_queue, "[WS] Failed to serialize json (msg_type: %d)", ectoi(type));
+        kz_log(log_queue, "[WS] Failed to serialize json (msg_type: %d)", type);
     }
     json_value_free(root_val);
 }

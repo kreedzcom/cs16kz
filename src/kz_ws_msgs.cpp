@@ -23,7 +23,14 @@
 std::mutex g_active_uploads_mtx;
 std::set<std::string> g_active_uploads;
 
-WSMessageFunc g_callback_table[ectoi(WSMessageType::_MAX)];
+static void kz_ws_format_time(char* buf, size_t sz, int64_t time_ms)
+{
+    if (time_ms < 0) time_ms = 0;
+    int64_t minutes  = time_ms / 60000;
+    int64_t seconds  = (time_ms % 60000) / 1000;
+    int64_t millis   = time_ms % 1000;
+    snprintf(buf, sz, "%lld:%02lld.%03lld", (long long)minutes, (long long)seconds, (long long)millis);
+}
 
 void kz_ws_run_tasks(int max_tasks_per_frame)
 {
@@ -82,7 +89,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                     if (g_active_uploads.find(*(it->message)) == g_active_uploads.end())
                     {
                         ws_upload metadata = {};
-                        metadata.id = it->msg_type;
+                        metadata.id = 0;
 
                         std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / *(it->message);
                         replay.replace_extension(".krpz");
@@ -125,9 +132,9 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
         }
     }
 }
-void kz_ws_register(WSMessageType type, WSMessageFunc pfn)
+void kz_ws_register(int type, WSMessageFunc pfn)
 {
-    g_callback_table[ectoi(type)] = pfn;
+    g_callback_map[type] = pfn;
 }
 void kz_ws_event_client_connect(edict_t* pEntity)
 {
@@ -139,11 +146,11 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     std::string message;
     int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
-    json_object_set_string(data_obj, "nickname", g_players[id].nickname);
-    json_object_set_string(data_obj, "ipaddr", g_players[id].ipaddr);
-    json_object_set_string(data_obj, "steamid", g_players[id].steamid);
+    json_object_set_string(data_obj, "nickname",   g_players[id].nickname);
+    json_object_set_string(data_obj, "ip_address", g_players[id].ipaddr);
+    json_object_set_string(data_obj, "steamid",    g_players[id].steamid);
 
-    kz_ws_build_msg(WSMessageType::client_info, data_val, message, msg_id);
+    kz_ws_build_msg(WSMsgOut::PLAYER_JOIN, data_val, message, msg_id);
 
 #ifdef SHARED_PTR_DBG
     auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
@@ -154,19 +161,73 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     auto shared_msg = std::make_shared<std::string>(std::move(message));
 #endif
 
-    kz_storage_save(shared_msg, ectoi(WSMessageType::client_info), msg_id, StorageTable::outgoing_queue);
+    kz_storage_save(shared_msg, WSMsgOut::PLAYER_JOIN, msg_id, StorageTable::outgoing_queue);
+    kz_ws_queue_msg(shared_msg, msg_id);
+}
+void kz_ws_event_client_disconnect(edict_t* pEntity)
+{
+    int id = indexOfEdict(pEntity);
+    if (!g_players[id].steamid[0])
+    {
+        return;
+    }
+
+    JSON_Value* data_val = json_value_init_object();
+    JSON_Object* data_obj = json_value_get_object(data_val);
+
+    std::string message;
+    int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
+
+    json_object_set_string(data_obj, "steamid", g_players[id].steamid);
+
+    kz_ws_build_msg(WSMsgOut::PLAYER_LEAVE, data_val, message, msg_id);
+
+#ifdef SHARED_PTR_DBG
+    auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
+        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+        delete p;
+    });
+#else
+    auto shared_msg = std::make_shared<std::string>(std::move(message));
+#endif
+
+    kz_storage_save(shared_msg, WSMsgOut::PLAYER_LEAVE, msg_id, StorageTable::outgoing_queue);
+    kz_ws_queue_msg(shared_msg, msg_id);
+}
+void kz_ws_event_map_change(void)
+{
+    JSON_Value* data_val = json_value_init_object();
+    JSON_Object* data_obj = json_value_get_object(data_val);
+
+    std::string message;
+    int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
+
+    json_object_set_string(data_obj, "map_name", g_header.map.name);
+
+    kz_ws_build_msg(WSMsgOut::MAP_CHANGE, data_val, message, msg_id);
+
+#ifdef SHARED_PTR_DBG
+    auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
+        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+        delete p;
+    });
+#else
+    auto shared_msg = std::make_shared<std::string>(std::move(message));
+#endif
+
+    kz_storage_save(shared_msg, WSMsgOut::MAP_CHANGE, msg_id, StorageTable::outgoing_queue);
     kz_ws_queue_msg(shared_msg, msg_id);
 }
 std::function<void()> kz_ws_ack_invalid(JSON_Object* obj)
 {
-    kz_log(&g_ws_log,"[kz_ws_ack_invalid] Invalid msg_id: %d", json_object_get_number(obj, "msg_id"));
+    kz_log(&g_ws_log,"[kz_ws_ack_invalid] Unhandled msg_type: %d", (int)json_object_get_number(obj, "msg_type"));
     return nullptr;
 }
 std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
 {
     ACK_CHECK_MISSING(data.heartbeat_interval);
 
-    int heartbeat_interval = json_object_dotget_number(obj, "data.heartbeat_interval");
+    int heartbeat_interval = (int)json_object_dotget_number(obj, "data.heartbeat_interval");
     g_websocket.setPingInterval(heartbeat_interval);
     g_websocket.setMinWaitBetweenReconnectionRetries(5000);
     g_websocket.setMaxWaitBetweenReconnectionRetries(15000);
@@ -176,24 +237,35 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
 }
 std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
 {
-    ACK_CHECK_MISSING(data.mapname);
-    ACK_CHECK_MISSING(data.wr_txt);
-    ACK_CHECK_MISSING(data.swr_txt);
-    ACK_CHECK_MISSING(data.type);
-    ACK_CHECK_MISSING(data.length);
-    ACK_CHECK_MISSING(data.difficulty);
+    ACK_CHECK_MISSING(data.map_name);
 
+    char szMap[64];
+    snprintf(szMap, sizeof(szMap), "%s", json_object_dotget_string(obj, "data.map_name"));
 
-    char szWR[128];  snprintf(szWR, sizeof(szWR), "%s", json_object_dotget_string(obj, "data.wr_txt"));
-    char szSWR[128]; snprintf(szSWR, sizeof(szSWR), "%s", json_object_dotget_string(obj, "data.swr_txt"));
-    char szMap[64];  snprintf(szMap, sizeof(szMap), "%s", json_object_dotget_string(obj, "data.mapname"));
+    char szWR[128]  = {0};
+    char szSWR[128] = {0};
 
-    int map_props[3];
-    map_props[0]    = json_object_dotget_number(obj, "data.type");
-    map_props[1]    = json_object_dotget_number(obj, "data.length");
-    map_props[2]    = json_object_dotget_number(obj, "data.difficulty");
+    const char* wr_pro_steamid = json_object_dotget_string(obj, "data.wr_pro_steamid");
+    double wr_pro_time_ms      = json_object_dotget_number(obj, "data.wr_pro_time_ms");
+    if (wr_pro_steamid && wr_pro_steamid[0])
+    {
+        char time_str[32];
+        kz_ws_format_time(time_str, sizeof(time_str), (int64_t)wr_pro_time_ms);
+        snprintf(szWR, sizeof(szWR), "%s (%s)", wr_pro_steamid, time_str);
+    }
 
-    int64_t msg_id = json_object_get_number(obj, "msg_id");
+    const char* wr_nub_steamid = json_object_dotget_string(obj, "data.wr_nub_steamid");
+    double wr_nub_time_ms      = json_object_dotget_number(obj, "data.wr_nub_time_ms");
+    if (wr_nub_steamid && wr_nub_steamid[0])
+    {
+        char time_str[32];
+        kz_ws_format_time(time_str, sizeof(time_str), (int64_t)wr_nub_time_ms);
+        snprintf(szSWR, sizeof(szSWR), "%s (%s)", wr_nub_steamid, time_str);
+    }
+
+    int map_props[3] = {0, 0, 0};
+
+    int64_t msg_id = (int64_t)json_object_get_number(obj, "msg_id");
     return [szWR, szSWR, szMap, map_props, msg_id]() mutable {
         auto it = g_plugin_callbacks.find(msg_id);
 
@@ -209,108 +281,91 @@ std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
         }
     };
 }
-std::function<void()> kz_ws_ack_client_info(JSON_Object* obj)
+std::function<void()> kz_ws_ack_player_join(JSON_Object* obj)
 {
-    ACK_CHECK_MISSING(data.banned);
+    ACK_CHECK_MISSING(data.is_banned);
     ACK_CHECK_MISSING(data.steamid);
 
-    bool is_banned = json_object_dotget_boolean(obj, "data.banned");
-    if (is_banned)
-    {
-        ACK_CHECK_MISSING(data.banned_by);
-    }
+    bool is_banned = json_object_dotget_boolean(obj, "data.is_banned") != 0;
 
     char szAuth[35] = {0};
-    char szBy[32] = {0};
     snprintf(szAuth, sizeof(szAuth), "%s", json_object_dotget_string(obj, "data.steamid"));
-    snprintf(szBy, sizeof(szBy), "%s", json_object_dotget_string(obj, "data.banned_by"));
 
-    if (!szAuth[0] || (is_banned && !szBy[0]))
+    if (!szAuth[0])
     {
         return nullptr;
     }
-    return [szAuth, szBy, is_banned]() {
+    return [szAuth, is_banned]() {
         edict_t* pEntity = find_player_by_authid(szAuth);
-        if (!FNullEnt(pEntity))
+        if (!FNullEnt(pEntity) && is_banned)
         {
-            if (is_banned)
-            {
-                char buff[192];
+            char buff[192];
+            snprintf(buff, sizeof(buff), "kick #%d \"You've been cross-community banned\"\n", GETPLAYERUSERID(pEntity));
+            SERVER_COMMAND(buff);
 
-                snprintf(buff, sizeof(buff), "kick #%d \"You've been cross-community banned by %s\"\n", GETPLAYERUSERID(pEntity), szBy);
-                SERVER_COMMAND(buff);
-
-                snprintf(buff, sizeof(buff), "banid 5 %s\n", szAuth);
-                SERVER_COMMAND(buff);
-            }
+            snprintf(buff, sizeof(buff), "banid 5 %s\n", szAuth);
+            SERVER_COMMAND(buff);
         }
     };
 }
-std::function<void()> kz_ws_ack_add_record(JSON_Object* obj)
+std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
 {
-     ACK_CHECK_MISSING(data.id);
-     ACK_CHECK_MISSING(data.local_uid);
+    ACK_CHECK_MISSING(data.local_uid);
 
-     ws_upload metadata = {};
-     metadata.id = json_object_dotget_number(obj, "data.id");
+    const char* local_uid = json_object_dotget_string(obj, "data.local_uid");
+    if (!local_uid || !local_uid[0])
+    {
+        kz_log(&g_ws_log, "[kz_ws_ack_record_ack] Empty local_uid.");
+        return nullptr;
+    }
 
-     const char* local_uid = json_object_dotget_string(obj, "data.local_uid");
-     std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / local_uid;
-     replay.replace_extension(".krpr");
+    ws_upload metadata = {};
+    metadata.id = 0;
 
-     snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", local_uid);
-     snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
+    std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / local_uid;
+    replay.replace_extension(".krpr");
 
-     if (std::filesystem::exists(replay))
-     {
-          {
-               std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-               g_active_uploads.insert(local_uid);
-          }
+    snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", local_uid);
+    snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
+
+    if (std::filesystem::exists(replay))
+    {
+        {
+            std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
+            g_active_uploads.insert(local_uid);
+        }
 #ifdef SHARED_PTR_DBG
-          auto shared_msg = std::shared_ptr<std::string>(new std::string(metadata.local_uid), [](std::string* p) {
-               MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-               delete p;
-          });
+        auto shared_msg = std::shared_ptr<std::string>(new std::string(metadata.local_uid), [](std::string* p) {
+            MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
+            delete p;
+        });
 #else
-          auto shared_msg = std::make_shared<std::string>(metadata.local_uid);
+        auto shared_msg = std::make_shared<std::string>(metadata.local_uid);
 #endif
 
-          if (kz_api_log_upload->value > 0.0f)
-          {
-               kz_log(&g_ws_log, "[UPLOAD] File: %s", std::filesystem::relative(replay, g_data_dir).c_str());
-          }
+        if (kz_api_log_upload->value > 0.0f)
+        {
+            kz_log(&g_ws_log, "[UPLOAD] File: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+        }
 
-          kz_storage_save(shared_msg, metadata.id, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
-          kz_rp_compress_and_upload_async(metadata);
-     }
-     else
-     {
-          if (kz_api_log_upload->value > 0.0f)
-          {
-               kz_log(&g_ws_log, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).c_str());
-          }
-     }
-     return nullptr;
-}
-std::function<void()> kz_ws_ack_del_record(JSON_Object* obj)
-{
-    kz_log(&g_ws_log, "[kz_ws_ack_del_record]");
+        kz_storage_save(shared_msg, 0, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
+        kz_rp_compress_and_upload_async(metadata);
+    }
+    else
+    {
+        if (kz_api_log_upload->value > 0.0f)
+        {
+            kz_log(&g_ws_log, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+        }
+    }
     return nullptr;
 }
-std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj)
+std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
 {
-    kz_log(&g_ws_log, "[kz_ws_ack_get_replay]");
-    return nullptr;
-}
-std::function<void()> kz_ws_ack_file(JSON_Object* obj)
-{
-    ACK_CHECK_MISSING(data.id);
     ACK_CHECK_MISSING(data.local_uid);
 
     char local_uid[64] = {0};
-    uint64 id = json_object_dotget_number(obj, "data.id");
-    bool status = json_object_dotget_boolean(obj, "data.status");
+    bool status = json_object_dotget_boolean(obj, "data.status") != 0;
 
     snprintf(local_uid, sizeof(local_uid), "%s", json_object_dotget_string(obj, "data.local_uid"));
     if (status)
@@ -361,7 +416,6 @@ std::function<void()> kz_ws_ack_file(JSON_Object* obj)
             std::filesystem::path raw_path = g_data_dir / "kz_global" / "replays" / local_uid;
             raw_path.replace_extension(".krpr");
             std::filesystem::remove(raw_path, ec);
-
         }
         {
             std::lock_guard<std::mutex> lock(g_retry_mtx);
@@ -384,7 +438,7 @@ std::function<void()> kz_ws_ack_file(JSON_Object* obj)
             std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
             g_active_uploads.erase(local_uid);
         }
-        kz_storage_delete(id, StorageTable::upload_queue);
+        kz_storage_delete_by_value(local_uid, StorageTable::upload_queue);
 
         return [mapname]() {
             if (!mapname.empty() && FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))

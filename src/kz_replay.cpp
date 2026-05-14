@@ -735,18 +735,15 @@ static void kz_rp_writer_thread(void)
                         char steamid[35];
                         snprintf(steamid, sizeof(steamid), "STEAM_%c:%c:%s", sig->steamid_short[0], sig->steamid_short[1], sig->steamid_short + 2);
 
-                        json_object_dotset_string(data_obj, "player.nickname", sig->nickname);
-                        json_object_dotset_string(data_obj, "player.steamid", steamid);
-                        json_object_dotset_string(data_obj, "map.name", mapname.c_str());
-                        json_object_dotset_number(data_obj, "map.checksum", g_header.map.checksum);
-                        json_object_dotset_number(data_obj, "run.time", sig->time);
-                        json_object_dotset_number(data_obj, "run.checkpoints", 0);
-                        json_object_dotset_number(data_obj, "run.gochecks", 0);
-                        json_object_dotset_string(data_obj, "local_uid", uid_str);
+                        json_object_set_string(data_obj, "steamid",   steamid);
+                        json_object_set_string(data_obj, "map_name",  mapname.c_str());
+                        json_object_set_number(data_obj, "time_ms",   (double)(int64_t)(sig->time * 1000.0f));
+                        json_object_set_number(data_obj, "teleports", 0);
+                        json_object_set_string(data_obj, "local_uid", uid_str);
 
                         std::string message;
                         uint64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
-                        kz_ws_build_msg(WSMessageType::add_record, data_val, message, msg_id, &g_replay_writer_log);
+                        kz_ws_build_msg(WSMsgOut::ADD_RECORD, data_val, message, msg_id, &g_replay_writer_log);
 
 #ifdef SHARED_PTR_DBG
                         auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
@@ -756,7 +753,7 @@ static void kz_rp_writer_thread(void)
 #else
                         auto shared_msg = std::make_shared<std::string>(std::move(message));
 #endif
-                        kz_storage_save(shared_msg, ectoi(WSMessageType::add_record), msg_id, StorageTable::outgoing_queue);
+                        kz_storage_save(shared_msg, WSMsgOut::ADD_RECORD, msg_id, StorageTable::outgoing_queue);
                         kz_ws_send_msg(*shared_msg, msg_id);
                     }
                     else

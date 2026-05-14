@@ -7,6 +7,7 @@
 #include <ixwebsocket/IXWebSocket.h>
 #include <string>
 #include <set>
+#include <unordered_map>
 
 enum class WSState : int
 {
@@ -18,21 +19,24 @@ enum class WSState : int
     _MAX,
 };
 
-enum class WSMessageType : int
-{
-    invalid = 0,
+// Outbound (plugin → API) message types
+namespace WSMsgOut {
+    constexpr int HELLO          = 1;
+    constexpr int MAP_CHANGE     = 2;
+    constexpr int PLAYER_JOIN    = 3;
+    constexpr int PLAYER_LEAVE   = 4;
+    constexpr int WANT_MAP_INFO  = 5;
+    constexpr int ADD_RECORD     = 8;
+}
 
-    hello,
-    map_info,
-    client_info,
-
-    add_record,
-    del_record,
-    get_replay,
-
-    file,
-    _MAX,
-};
+// Inbound (API → plugin) message types
+namespace WSMsgIn {
+    constexpr int HELLO_ACK       = 101;
+    constexpr int MAP_INFO        = 102;
+    constexpr int PLAYER_JOIN_ACK = 103;
+    constexpr int RECORD_ACK      = 105;
+    constexpr int FILE_ACK        = 106;
+}
 
 namespace kz {
     using websocket = ix::WebSocket;
@@ -66,7 +70,7 @@ typedef struct {
 
 
 typedef std::function<void()> (*WSMessageFunc)(JSON_Object*);
-extern WSMessageFunc g_callback_table[];
+extern std::unordered_map<int, WSMessageFunc> g_callback_map;
 
 extern kz::websocket g_websocket;
 extern std::atomic<WSState> g_websocket_state;
@@ -83,25 +87,21 @@ extern void kz_ws_uninit(void);
 extern void kz_ws_start(std::string url, std::string token);
 extern void kz_ws_stop(void);
 
-extern void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& output, int64_t msg, kz::queue<log_entry>* log_queue = &g_ws_log);
+extern void kz_ws_build_msg(int type, JSON_Value* data_val, std::string& output, int64_t msg, kz::queue<log_entry>* log_queue = &g_ws_log);
 extern void kz_ws_queue_msg(std::shared_ptr<std::string> msg, int64_t msg_id);
 extern void kz_ws_send_msg(std::string& msg, int64_t msg_id);
 
 extern void kz_ws_run_tasks(int max_jobs_per_frame);
-extern void kz_ws_register(WSMessageType type, WSMessageFunc pfn);
+extern void kz_ws_register(int type, WSMessageFunc pfn);
 extern void kz_ws_event_client_connect(edict_t* pEntity);
+extern void kz_ws_event_client_disconnect(edict_t* pEntity);
+extern void kz_ws_event_map_change(void);
 
 extern std::function<void()> kz_ws_ack_invalid(JSON_Object* obj);
-
 extern std::function<void()> kz_ws_ack_hello(JSON_Object* obj);
 extern std::function<void()> kz_ws_ack_map_info(JSON_Object* obj);
-extern std::function<void()> kz_ws_ack_client_info(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_player_join(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj);
 
-extern std::function<void()> kz_ws_ack_add_record(JSON_Object* obj);
-extern std::function<void()> kz_ws_ack_del_record(JSON_Object* obj);
-extern std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj);
-
-extern std::function<void()> kz_ws_ack_file(JSON_Object* obj);
-
-template <typename T> constexpr int ectoi(T ec) { return static_cast<int>(ec); }
 #endif
