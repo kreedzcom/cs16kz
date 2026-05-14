@@ -79,9 +79,7 @@ void FN_AMXX_PLUGINSLOADED()
     {
         if (!kz_init_rehooks() && !kz_init_detours())
         {
-            for(;;) {}
-            //SERVER_COMMAND("meta unload kz_global_api\n");
-            //SERVER_EXECUTE();
+            MF_Log("[KZ] ERROR: Failed to install Cvar_DirectSet hook. Server cvar enforcement will not work.");
             return;
         }
         g_initialiazed = true;
