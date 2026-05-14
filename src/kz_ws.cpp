@@ -41,6 +41,12 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
                 kz_log(&g_ws_log, "[WS] Failed to parse json.");
                 break;
             }
+            if (json_value_get_type(root_val) != JSONObject)
+            {
+                kz_log(&g_ws_log, "[WS] Expected a JSON object, got type %d.", json_value_get_type(root_val));
+                json_value_free(root_val);
+                break;
+            }
 
             JSON_Object* root_obj = json_value_get_object(root_val);
             int32_t msg_type = json_object_get_number(root_obj, "msg_type");
