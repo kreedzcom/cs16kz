@@ -370,7 +370,31 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
     snprintf(local_uid, sizeof(local_uid), "%s", json_object_dotget_string(obj, "data.local_uid"));
     if (status)
     {
+        // Always clean up the upload queue and active-uploads set — the server
+        // accepted the upload regardless of whether local file operations succeed.
+        auto cleanup = [&]() {
+            {
+                std::lock_guard<std::mutex> lock(g_retry_mtx);
+                auto it = g_retry_queue.begin();
+                while (it != g_retry_queue.end())
+                {
+                    if (it->table == StorageTable::upload_queue && strcmp(local_uid, it->message->c_str()) == 0)
+                    {
+                        g_retry_queue.erase(it);
+                        break;
+                    }
+                    ++it;
+                }
+            }
+            {
+                std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
+                g_active_uploads.erase(local_uid);
+            }
+            kz_storage_delete_by_value(local_uid, StorageTable::upload_queue);
+        };
+
         std::string mapname;
+        bool file_moved = false;
         {
             std::filesystem::path filepath = g_data_dir / "kz_global" / "replays" / local_uid;
             filepath.replace_extension(".krpr");
@@ -378,6 +402,8 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             FILE* fp = fopen(filepath.string().c_str(), "rb");
             if (!fp)
             {
+                kz_log(&g_ws_log, "[ACK] Upload accepted but .krpr missing for: %s", local_uid);
+                cleanup();
                 return nullptr;
             }
 
@@ -400,6 +426,7 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             if (ec)
             {
                 kz_log(&g_ws_log, "[ACK] Failed to create replay directory: %s", ec.message().c_str());
+                cleanup();
                 return nullptr;
             }
 
@@ -410,46 +437,31 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
                     std::filesystem::relative(filepath, g_data_dir).c_str(),
                     std::filesystem::relative(n_filepath, g_data_dir).c_str(),
                     ec.message().c_str());
+                cleanup();
                 return nullptr;
             }
 
             std::filesystem::path raw_path = g_data_dir / "kz_global" / "replays" / local_uid;
             raw_path.replace_extension(".krpr");
             std::filesystem::remove(raw_path, ec);
+            file_moved = true;
         }
-        {
-            std::lock_guard<std::mutex> lock(g_retry_mtx);
 
-            auto it = g_retry_queue.begin();
-            while (it != g_retry_queue.end())
-            {
-                if (it->table == StorageTable::upload_queue)
+        cleanup();
+
+        if (file_moved && !mapname.empty())
+        {
+            return [mapname]() {
+                if (FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
                 {
-                    if (strcmp(local_uid, it->message->c_str()) == 0)
+                    std::filesystem::path file = kz_pb_find_fastest(mapname.c_str());
+                    if (!file.empty() && !FStrEq(file.filename().string().c_str(), g_pb_bot_data->filepath.filename().string().c_str()))
                     {
-                        g_retry_queue.erase(it);
-                        break;
+                        kz_pb_parse_file_async(file);
                     }
                 }
-                ++it;
-            }
+            };
         }
-        {
-            std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-            g_active_uploads.erase(local_uid);
-        }
-        kz_storage_delete_by_value(local_uid, StorageTable::upload_queue);
-
-        return [mapname]() {
-            if (!mapname.empty() && FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
-            {
-                std::filesystem::path file = kz_pb_find_fastest(mapname.c_str());
-                if (!file.empty() && !FStrEq(file.filename().string().c_str(), g_pb_bot_data->filepath.filename().string().c_str()))
-                {
-                    kz_pb_parse_file_async(file);
-                }
-            }
-        };
     }
     return nullptr;
 }

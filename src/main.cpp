@@ -42,12 +42,12 @@ void FN_AMXX_ATTACH()
 {
     g_pEdicts = (*g_engfuncs.pfnPEntityOfEntIndex)(0);
     
-    kz_ws_register(0,                         kz_ws_ack_invalid);
-    kz_ws_register(WSMsgIn::HELLO_ACK,       kz_ws_ack_hello);
-    kz_ws_register(WSMsgIn::MAP_INFO,        kz_ws_ack_map_info);
-    kz_ws_register(WSMsgIn::PLAYER_JOIN_ACK, kz_ws_ack_player_join);
-    kz_ws_register(WSMsgIn::RECORD_ACK,      kz_ws_ack_record_ack);
-    kz_ws_register(WSMsgIn::FILE_ACK,        kz_ws_ack_file_ack);
+    kz_ws_register(0,                    kz_ws_ack_invalid);
+    kz_ws_register(WSMsgIn::HELLO_ACK,  kz_ws_ack_hello);
+    kz_ws_register(WSMsgIn::MAP_INFO,   kz_ws_ack_map_info);
+    kz_ws_register(WSMsgOut::PLAYER_JOIN, kz_ws_ack_player_join); // API echoes type 3 as the join ACK
+    kz_ws_register(WSMsgIn::RECORD_ACK, kz_ws_ack_record_ack);
+    kz_ws_register(WSMsgIn::FILE_ACK,   kz_ws_ack_file_ack);
 
     kz_api_url      = register_cvar("kz_api_url",  "wss://api.kreedz.com/ws/game", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
     kz_api_token    = register_cvar("kz_api_token","", FCVAR_EXTDLL | FCVAR_PROTECTED | FCVAR_SPONLY);
