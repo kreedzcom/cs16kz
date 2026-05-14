@@ -63,11 +63,9 @@ void fm_set_user_team(edict_t* ed, int team)
     int id = indexOfEdict(ed);
 
 #ifdef WIN32
-    //set_member<int>(ed->pvPrivateData, 114, team);
-    *((int*)ed->pvPrivateData + 114) = 1;
+    *((int*)ed->pvPrivateData + 114) = team;
 #else
-    //set_member<int>(ed->pvPrivateData, 119, team);
-    *((int*)ed->pvPrivateData + 119) = 1;
+    *((int*)ed->pvPrivateData + 119) = team;
 #endif
 
     MESSAGE_BEGIN(MSG_ALL, g_msg_teaminfo);

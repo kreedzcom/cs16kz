@@ -109,7 +109,7 @@ void kz_pb_frame(void)
                 g_pb_bot_data->use_count = 0;
                 g_pb_bot_data->plr_sound = 0;
                 g_pb_bot_data->step_left = 0;
-                g_pb_bot_data->team      = 1;
+                g_pb_bot_data->team      = static_cast<int>(kz_api_bot_team->value);
 
                 g_pb_bot_data->delay_counter = 0;
                 g_pb_bot_data->frame_counter = 0;
