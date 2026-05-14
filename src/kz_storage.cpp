@@ -135,11 +135,11 @@ void kz_storage_clear()
     while (it != g_retry_queue.end())
     {
         bool delete_msg = false;
-        if (it->msg_type == ectoi(WSMessageType::map_info) || it->msg_type == ectoi(WSMessageType::client_info))
+        if (it->msg_type == WSMsgOut::WANT_MAP_INFO || it->msg_type == WSMsgOut::PLAYER_JOIN)
         {
             delete_msg = true;
         }
-        if (it->msg_type == ectoi(WSMessageType::map_info))
+        if (it->msg_type == WSMsgOut::WANT_MAP_INFO)
         {
             auto p = g_plugin_callbacks.find(it->msg_id);
             if (p != g_plugin_callbacks.end())
@@ -150,7 +150,7 @@ void kz_storage_clear()
         }
         if (delete_msg)
         {
-            delete_list[ectoi(it->table)].push_back(it->msg_id);
+            delete_list[static_cast<int>(it->table)].push_back(it->msg_id);
             it = g_retry_queue.erase(it);
         }
         else
@@ -281,6 +281,30 @@ void kz_storage_delete(int64_t msg_id, StorageTable table)
     catch (const std::exception& e)
     {
         kz_log(&g_storage_log, "[Storage] delete: %s", e.what());
+    }
+}
+void kz_storage_delete_by_value(const std::string& value, StorageTable table)
+{
+    try
+    {
+        char statement[128];
+        switch (table)
+        {
+            case StorageTable::upload_queue:
+            {
+                snprintf(statement, sizeof(statement), "DELETE FROM upload_queue WHERE local_uid = ?");
+                break;
+            }
+            default:
+                return;
+        }
+        SQLite::Statement query(*kz_storage_database, statement);
+        query.bind(1, value);
+        query.exec();
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] delete_by_value: %s", e.what());
     }
 }
 void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table)
