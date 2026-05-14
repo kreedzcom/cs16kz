@@ -731,7 +731,7 @@ static void kz_rp_writer_thread(void)
 
                         std::string message;
                         uint64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
-                        kz_ws_build_msg(WSMessageType::add_record, data_val, message, msg_id);
+                        kz_ws_build_msg(WSMessageType::add_record, data_val, message, msg_id, &g_replay_writer_log);
 
 #ifdef SHARED_PTR_DBG
                         auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {

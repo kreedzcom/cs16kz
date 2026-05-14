@@ -198,7 +198,7 @@ void kz_ws_stop(void)
 {
     g_websocket.stop();
 }
-void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& msg, int64_t msg_id)
+void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& msg, int64_t msg_id, kz::queue<log_entry>* log_queue)
 {
     JSON_Value* root_val = json_value_init_object();
     JSON_Object* root_obj = json_value_get_object(root_val);
@@ -216,7 +216,7 @@ void kz_ws_build_msg(WSMessageType type, JSON_Value* data_val, std::string& msg,
     }
     else
     {
-        kz_log(&g_ws_log, "[WS] Failed to serialize json (msg_type: %d)", ectoi(type));
+        kz_log(log_queue, "[WS] Failed to serialize json (msg_type: %d)", ectoi(type));
     }
     json_value_free(root_val);
 }
