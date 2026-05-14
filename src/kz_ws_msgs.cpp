@@ -415,6 +415,7 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             if (!std::filesystem::exists(filepath))
             {
                 kz_log(&g_ws_log, "[ACK] Compressed replay not found: %s", std::filesystem::relative(filepath, g_data_dir).c_str());
+                cleanup();
                 return nullptr;
             }
 
