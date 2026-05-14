@@ -20,6 +20,7 @@ extern cvar_t* kz_api_retries_delay;
 extern cvar_t* kz_api_replays_clevel;
 
 extern cvar_t* kz_api_bot_prefix;
+extern cvar_t* kz_api_bot_team;
 
 extern const pr_cvar_t g_server_cvars[];
 extern const size_t g_server_cvars_size;
