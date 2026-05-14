@@ -135,7 +135,7 @@ void kz_storage_clear()
     while (it != g_retry_queue.end())
     {
         bool delete_msg = false;
-        if (it->msg_type == WSMsgOut::WANT_MAP_INFO || it->msg_type == WSMsgOut::PLAYER_JOIN)
+        if (it->msg_type == WSMsgOut::WANT_MAP_INFO || it->msg_type == WSMsgOut::PLAYER_JOIN || it->msg_type == WSMsgOut::PLAYER_LEAVE)
         {
             delete_msg = true;
         }

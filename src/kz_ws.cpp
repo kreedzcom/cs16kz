@@ -70,7 +70,7 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             }
             else
             {
-                fn = g_callback_map[0](root_obj);
+                fn = kz_ws_ack_invalid(root_obj);
             }
 
             bool delete_msg = true;

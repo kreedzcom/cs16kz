@@ -31,10 +31,11 @@ namespace WSMsgOut {
 
 // Inbound (API → plugin) message types
 namespace WSMsgIn {
-    constexpr int HELLO_ACK  = 101;
-    constexpr int MAP_INFO   = 102;
-    constexpr int RECORD_ACK = 105;
-    constexpr int FILE_ACK   = 106;
+    constexpr int HELLO_ACK      = 101;
+    constexpr int MAP_INFO       = 102;
+    constexpr int PLAYER_JOIN_ACK = 103;
+    constexpr int RECORD_ACK     = 105;
+    constexpr int FILE_ACK       = 106;
 }
 
 namespace kz {
