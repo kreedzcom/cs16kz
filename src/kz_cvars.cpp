@@ -8,7 +8,7 @@
 #include "kz_storage.h"
 
 const pr_cvar_t g_server_cvars[] = {
-    {"edgefricton",         "2",        nullptr},
+    {"edgefriction",        "2",        nullptr},
     {"sv_gravity",          "800",      nullptr},
     {"sv_stopspeed",        "75",       nullptr},
     {"sv_maxspeed",         "320",      nullptr},
