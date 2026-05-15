@@ -159,6 +159,7 @@ typedef struct
     std::vector<krp_playback_frame> frames;
 } krp_playback;
 
+extern krp_header    g_header;
 extern krp_playback* g_pb_bot_data;
 
 extern int kz_rp_run_started(int id);

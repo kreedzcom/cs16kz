@@ -31,5 +31,6 @@ extern void kz_storage_clear();
 extern int64_t kz_storage_get_next_id(StorageTable table);
 extern void kz_storage_save(std::shared_ptr<std::string> text, int64_t msg_type, int64_t msg_id, StorageTable table);
 extern void kz_storage_delete(int64_t msg_id, StorageTable table);
+extern void kz_storage_delete_by_value(const std::string& value, StorageTable table);
 extern void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table);
 #endif

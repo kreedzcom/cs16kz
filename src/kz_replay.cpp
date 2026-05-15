@@ -551,6 +551,8 @@ static void kz_rp_writer_thread(void)
     static FILE* s_fd[33];
     static krp_packet s_last[33];
     static size_t s_counter[33];
+    static uint32_t s_checkpoints[33];
+    static uint32_t s_gochecks[33];
 
     static char s_filepath[33][255];
 
@@ -595,6 +597,8 @@ static void kz_rp_writer_thread(void)
                     }
                     memset(&s_last[id], 0, sizeof(s_last[0]));
                     s_counter[id] = 0;
+                    s_checkpoints[id] = 0;
+                    s_gochecks[id] = 0;
                     break;
                 }
                 case KRP_SIGNAL_EVENT:
@@ -603,6 +607,13 @@ static void kz_rp_writer_thread(void)
                     {
                         kz_rp_write_frametype(s_fd[id], s_curr, BIT_FRAMETYPE_EVENT);
                         kz_rp_write_event(s_fd[id], s_curr);
+                    }
+                    {
+                        krp_signal* sig = reinterpret_cast<krp_signal*>(s_curr->data);
+                        if (sig->event == KRP_EVENT_TYPE_CHECKPOINT)
+                            s_checkpoints[id]++;
+                        else if (sig->event == KRP_EVENT_TYPE_GOCHECK)
+                            s_gochecks[id]++;
                     }
                     break;
                 }
@@ -683,6 +694,8 @@ static void kz_rp_writer_thread(void)
                     {
                         kz_log(&g_replay_writer_log, "[KRP] run_reject: no file descriptor for player (%d)", id);
                     }
+                    s_checkpoints[id] = 0;
+                    s_gochecks[id] = 0;
                     break;
                 }
                 case KRP_SIGNAL_FINISH:
@@ -735,18 +748,16 @@ static void kz_rp_writer_thread(void)
                         char steamid[35];
                         snprintf(steamid, sizeof(steamid), "STEAM_%c:%c:%s", sig->steamid_short[0], sig->steamid_short[1], sig->steamid_short + 2);
 
-                        json_object_dotset_string(data_obj, "player.nickname", sig->nickname);
-                        json_object_dotset_string(data_obj, "player.steamid", steamid);
-                        json_object_dotset_string(data_obj, "map.name", mapname.c_str());
-                        json_object_dotset_number(data_obj, "map.checksum", g_header.map.checksum);
-                        json_object_dotset_number(data_obj, "run.time", sig->time);
-                        json_object_dotset_number(data_obj, "run.checkpoints", 0);
-                        json_object_dotset_number(data_obj, "run.gochecks", 0);
-                        json_object_dotset_string(data_obj, "local_uid", uid_str);
+                        json_object_set_string(data_obj, "steamid",     steamid);
+                        json_object_set_string(data_obj, "map_name",    mapname.c_str());
+                        json_object_set_number(data_obj, "time_ms",     (double)(int64_t)(sig->time * 1000.0f));
+                        json_object_set_number(data_obj, "checkpoints", s_checkpoints[id]);
+                        json_object_set_number(data_obj, "gochecks",    s_gochecks[id]);
+                        json_object_set_string(data_obj, "local_uid",   uid_str);
 
                         std::string message;
                         uint64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
-                        kz_ws_build_msg(WSMessageType::add_record, data_val, message, msg_id, &g_replay_writer_log);
+                        kz_ws_build_msg(WSMsgOut::ADD_RECORD, data_val, message, msg_id, &g_replay_writer_log);
 
 #ifdef SHARED_PTR_DBG
                         auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
@@ -756,7 +767,7 @@ static void kz_rp_writer_thread(void)
 #else
                         auto shared_msg = std::make_shared<std::string>(std::move(message));
 #endif
-                        kz_storage_save(shared_msg, ectoi(WSMessageType::add_record), msg_id, StorageTable::outgoing_queue);
+                        kz_storage_save(shared_msg, WSMsgOut::ADD_RECORD, msg_id, StorageTable::outgoing_queue);
                         kz_ws_send_msg(*shared_msg, msg_id);
                     }
                     else
