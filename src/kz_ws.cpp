@@ -184,8 +184,15 @@ void kz_ws_start(std::string url, std::string token)
         return;
     }
 
-    ix::WebSocketHttpHeaders headers; headers["Authorization"] = std::string("Bearer ") + token;
+    ix::SocketTLSOptions tls_options;
+    tls_options.caFile = std::filesystem::path("cstrike/addons/amxmodx/data/kz_global/cacert.pem").string();
+
+
+    ix::WebSocketHttpHeaders headers; 
+    headers["Authorization"] = std::string("Bearer ") + token;
+
     g_websocket.setUrl(url);
+    g_websocket.setTLSOptions(tls_options);
     g_websocket.setExtraHeaders(headers);
     g_websocket.enablePerMessageDeflate();
     g_websocket.enableAutomaticReconnection();
