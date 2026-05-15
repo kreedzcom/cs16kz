@@ -3,6 +3,57 @@ const std = @import("std");
 const builtin = @import("builtin");
 const zcc = @import("compile_commands");
 const assert = std.debug.assert;
+const Md5 = std.crypto.hash.Md5;
+
+fn hashFilesInSrc(allocator: std.mem.Allocator) ![]const u8 {
+    var md5 = std.crypto.hash.Md5.init(.{});
+
+    var src_dir = try std.fs.cwd().openDir("src", .{ .iterate = true });
+    defer src_dir.close();
+
+    var walker = try src_dir.walk(allocator);
+    defer walker.deinit();
+
+
+    var file_paths: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (file_paths.items) |p| allocator.free(p);
+
+        file_paths.deinit(allocator);
+    }
+
+    while (try walker.next()) |entry| {
+        if (entry.kind == .file) {
+            const path_copy = try allocator.dupe(u8, entry.path);
+            try file_paths.append(allocator, path_copy);
+        }
+    }
+
+    std.mem.sort([]const u8, file_paths.items, {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.less);
+
+    for (file_paths.items) |file_path| { 
+        const file = try src_dir.openFile(file_path, .{});
+        defer file.close();
+
+        md5.update(file_path);
+
+        var buffer: [4096]u8 = undefined;
+        while (true) {
+            const bytes_read = try file.read(&buffer);
+            if (bytes_read == 0) break;
+            md5.update(buffer[0..bytes_read]);
+        }
+    }
+
+    var digest: [std.crypto.hash.Md5.digest_length]u8 = undefined;
+    md5.final(&digest);
+
+    const hex_chars = std.fmt.bytesToHex(digest, .lower);
+    return allocator.dupe(u8, &hex_chars);}
 
 pub fn build(b: *std.Build) !void
 {
@@ -234,11 +285,16 @@ pub fn build(b: *std.Build) !void
 			.link_libc = true,
 		}),
 	});
+
 	
 	lib.root_module.addCMacro("JIT", "");
 	lib.root_module.addCMacro("ASM32", "");
 	lib.root_module.addCMacro("HAVE_STDINT_H", "");
 	lib.root_module.addCMacro("g_rehlds_available", "RehldsApi");
+
+	const hash = try hashFilesInSrc(b.allocator);
+	lib.root_module.addCMacro("MODULE_CHECKSUM", hash);
+	defer b.allocator.free(hash);
 	
 	lib.linkLibrary(parson);
 	lib.linkLibrary(sqlitecpp);
