@@ -53,8 +53,8 @@ fn hashFilesInSrc(allocator: std.mem.Allocator) ![]const u8 {
     md5.final(&digest);
 
     const hex_chars = std.fmt.bytesToHex(digest, .lower);
-    return allocator.dupe(u8, &hex_chars);}
-
+    return try std.fmt.allocPrint(allocator, "\"{s}\"", .{&hex_chars});
+}
 pub fn build(b: *std.Build) !void
 {
     const target = b.standardTargetOptions(.{});
