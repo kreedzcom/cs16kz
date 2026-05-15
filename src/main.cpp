@@ -31,6 +31,10 @@ bool kz_init_detours(void);
 
 void (*Cvar_DirectSet_Actual)(cvar_t* var, const char* value);
 static CDetour* g_detour_Cvar_DirectSet = nullptr;
+
+void (*SV_DropClient_Actual)(client_t* cl, qboolean crash, const char* format, ...);
+static CDetour* g_detour_SV_DropClient = nullptr;
+
 /***************************************************************************************************************/
 /***************************************************************************************************************/
 int FN_AMXX_CHECKGAME(const char* game)
@@ -75,7 +79,7 @@ void FN_AMXX_PLUGINSLOADED()
     {
         if (!kz_init_rehooks() && !kz_init_detours())
         {
-            MF_Log("[KZ] ERROR: Failed to install Cvar_DirectSet hook. Server cvar enforcement will not work.");
+            MF_Log("ERROR: Failed to install one or multiple hooks. Some features might be disabled.");
             return;
         }
         g_initialiazed = true;
@@ -110,6 +114,11 @@ void FN_GameShutdown()
     {
         g_detour_Cvar_DirectSet->DisableDetour();
         g_detour_Cvar_DirectSet = nullptr;
+    }
+    if (g_detour_SV_DropClient)
+    {
+        g_detour_SV_DropClient->DisableDetour();
+        g_detour_SV_DropClient = nullptr;
     }
 }
 
@@ -231,23 +240,12 @@ void FN_PlayerPostThink(edict_t* pEntity)
     }
     RETURN_META(MRES_IGNORED);
 }
-void FN_ClientDisconnect(edict_t* pEntity)
-{
-    int id = ENTINDEX(pEntity);
-    if (!MF_IsPlayerBot(id))
-    {
-        if (!g_early_mapchange)
-        {
-            kz_ws_event_client_disconnect(pEntity);
-        }
-        memset(&g_players[id], 0, sizeof(g_players[0]));
-    }
-    RETURN_META(MRES_IGNORED);
-}
 BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* pszAddress, char szRejectReason[128])
 {
     int id = ENTINDEX(pEntity);
-    if (!MF_IsPlayerBot(id))
+    g_players[id].is_bot = MF_IsPlayerBot(id);
+
+    if (!g_players[id].is_bot)
     {
         for(size_t i = 0; i < g_player_cvars_size; ++i)
         {
@@ -307,8 +305,53 @@ void KZ_Cvar_DirectSet(cvar_t* var, const char* const value, IRehldsHook_Cvar_Di
     kz_ws_start(kz_api_url->string, kz_api_token->string);
     return;
 }
+void KZ_SV_DropClient(edict_t* client)
+{
+    if (g_early_mapchange)
+    {
+        return;
+    }
+
+    int id = indexOfEdict(client);
+    if (id <= 0 || id > gpGlobals->maxClients)
+    {
+        return;
+    }
+    if (g_players[id].is_bot)
+    {
+        return;
+    }
+
+    kz_ws_event_client_disconnect(client);
+    memset(&g_players[id], 0, sizeof(g_players[0]));
+}
 /***************************************************************************************************************/
 /***************************************************************************************************************/
+void RH_SV_DropClient(IRehldsHook_SV_DropClient* chain, IGameClient* cl, bool crash, const char* format)
+{
+    KZ_SV_DropClient(cl->GetEdict());
+
+    // https://github.com/alliedmodders/amxmodx/blob/master/amxmodx/meta_api.cpp#998
+    //
+    char buffer[1024];
+    ke::SafeStrcpy(buffer, sizeof(buffer), format);
+    chain->callNext(cl, crash, format);
+
+}
+void DT_SV_DropClient(client_t* cl, qboolean crash, const char* format, ...)
+{
+    KZ_SV_DropClient(cl->edict);
+
+    // https://github.com/alliedmodders/amxmodx/blob/master/amxmodx/meta_api.cpp#982
+    //
+    char buffer[1024];
+    va_list ap;
+    va_start(ap, format);
+    ke::SafeVsprintf(buffer, sizeof(buffer) - 1, format, ap);
+    va_end(ap);
+
+    SV_DropClient_Actual(cl, crash, "%s", buffer);
+}
 void RH_Cvar_DirectSet(IRehldsHook_Cvar_DirectSet* chain, cvar_t* var, const char* value)
 {
     KZ_Cvar_DirectSet(var, value, chain);
@@ -324,6 +367,7 @@ bool kz_init_rehooks(void)
     if (RehldsApi_Init())
     {
         RehldsHookchains->Cvar_DirectSet()->registerHook(RH_Cvar_DirectSet, HC_PRIORITY_UNINTERRUPTABLE);
+        RehldsHookchains->SV_DropClient()->registerHook(RH_SV_DropClient, HC_PRIORITY_UNINTERRUPTABLE);
         return true;
     }
     return false;
@@ -347,13 +391,26 @@ bool kz_init_detours(void)
     }
 
     void* address = nullptr;
+
+    /* Cvar_DirectSet */
     if (!CommonConfig->GetMemSig("Cvar_DirectSet", &address) || !address)
     {
-        MF_Log("ERROR: Failed to find \"Cvar_DirectSet\" function");
+        MF_Log("ERROR: Failed to find \"Cvar_DirectSet\" function. Server cvar enforcement will not work");
         return false;
     }
 
     g_detour_Cvar_DirectSet = CDetourManager::CreateDetour((void*)&DT_Cvar_DirectSet, (void**)&Cvar_DirectSet_Actual, address);
     g_detour_Cvar_DirectSet->EnableDetour();
+
+    /* SV_DropClient */
+    address = nullptr;
+    if (!CommonConfig->GetMemSig("SV_DropClient", &address) || !address)
+    {
+        MF_Log("ERROR: Failed to find \"SV_DropClient\" function. PLAYER_LEAVE event will not work");
+        return false;
+    }
+
+    g_detour_SV_DropClient = CDetourManager::CreateDetour((void*)&DT_SV_DropClient, (void**)&SV_DropClient_Actual, address);
+    g_detour_SV_DropClient->EnableDetour();
     return true;
 }
