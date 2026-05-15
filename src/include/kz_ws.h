@@ -38,7 +38,7 @@ namespace WSMsgIn {
     constexpr int RECORD_ACK     = 105;
     constexpr int FILE_ACK       = 106;
     constexpr int WR_BROADCAST   = 107;
-    constexpr int ERROR          = 199;
+    constexpr int ERROR_MSG      = 199;
 }
 
 namespace kz {
