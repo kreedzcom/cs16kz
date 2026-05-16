@@ -81,6 +81,10 @@ void kz_pb_frame(void)
         {
             kz_pb_parse_file_async(file);
         }
+        else
+        {
+            g_pb_bot_data = nullptr;
+        }
     }
     if (g_pb_bot_ent == nullptr || FNullEnt(g_pb_bot_ent))
     {

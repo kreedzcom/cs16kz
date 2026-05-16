@@ -441,9 +441,12 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
                 if (FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
                 {
                     std::filesystem::path file = kz_pb_find_fastest(mapname.c_str());
-                    if (!file.empty() && !FStrEq(file.filename().string().c_str(), g_pb_bot_data->filepath.filename().string().c_str()))
+                    if (!file.empty())
                     {
-                        kz_pb_parse_file_async(file);
+                        if (!g_pb_bot_data || !FStrEq(file.filename().string().c_str(), g_pb_bot_data->filepath.filename().string().c_str()))
+                        {
+                            kz_pb_parse_file_async(file);
+                        }
                     }
                 }
             };
