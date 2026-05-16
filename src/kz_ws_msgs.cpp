@@ -79,6 +79,13 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                     it = g_retry_queue.erase(it);
                     continue;
                 }
+
+                // The following messages doesn't require ACK (data send back to us)
+                if (it->msg_type == WSMsgOut::PLAYER_LEAVE || it->msg_type == WSMsgOut::MAP_CHANGE)
+                {
+                    it = g_retry_queue.erase(it);
+                    continue;
+                }
                 if (it->table == StorageTable::outgoing_queue)
                 {
                     kz_ws_send_msg(*(it->message), it->msg_id);
