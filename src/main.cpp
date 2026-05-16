@@ -90,6 +90,16 @@ void FN_AMXX_PLUGINSLOADED()
         kz_rp_init();
         kz_pb_init();
     }
+
+    std::filesystem::path kz_config = std::filesystem::path("cstrike") / MF_GetLocalInfo("amxx_configsdir", "addons/amxmodx/configs") / "kz_global.cfg";
+    if (std::filesystem::exists(kz_config) && std::filesystem::is_regular_file(kz_config))
+    {
+        char buffer[512];
+        snprintf(buffer, sizeof(buffer), "exec %s\n", kz_config.string().c_str());
+
+        SERVER_COMMAND(buffer);
+        SERVER_EXECUTE();
+    }
     kz_rp_update_header();
 
     if (g_initialiazed && g_websocket_state.load() == WSState::Connected)
