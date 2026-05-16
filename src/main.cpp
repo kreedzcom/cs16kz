@@ -347,7 +347,7 @@ void RH_SV_DropClient(IRehldsHook_SV_DropClient* chain, IGameClient* cl, bool cr
     //
     char buffer[1024];
     ke::SafeStrcpy(buffer, sizeof(buffer), format);
-    chain->callNext(cl, crash, format);
+    chain->callNext(cl, crash, buffer);
 
 }
 void DT_SV_DropClient(client_t* cl, qboolean crash, const char* format, ...)
