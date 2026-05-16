@@ -103,7 +103,7 @@ void kz_pb_frame(void)
                 g_current_playback = std::move(g_pb_data.back());
                 g_pb_bot_data = &g_current_playback;
 
-                g_pb_bot_data->use_cmd = false;
+                g_pb_bot_data->use_cmd = static_cast<bool>(kz_api_bot_use_cmd->value);
                 g_pb_bot_data->double_speed = false;
 
                 g_pb_bot_data->use_count = 0;

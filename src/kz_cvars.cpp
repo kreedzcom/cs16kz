@@ -55,6 +55,7 @@ cvar_t* kz_api_replays_clevel = nullptr;
 
 cvar_t* kz_api_bot_prefix = nullptr;
 cvar_t* kz_api_bot_team = nullptr;
+cvar_t* kz_api_bot_use_cmd = nullptr;
 
 char g_prev_api_url[64];
 char g_prev_api_token[64];
