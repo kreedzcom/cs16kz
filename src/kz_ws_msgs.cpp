@@ -152,14 +152,7 @@ void kz_ws_event_client_connect(edict_t* pEntity)
 
     kz_ws_build_msg(WSMsgOut::PLAYER_JOIN, data_val, message, msg_id);
 
-#ifdef SHARED_PTR_DBG
-    auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
-        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-        delete p;
-    });
-#else
     auto shared_msg = std::make_shared<std::string>(std::move(message));
-#endif
 
     kz_storage_save(shared_msg, WSMsgOut::PLAYER_JOIN, msg_id, StorageTable::outgoing_queue);
     kz_ws_queue_msg(shared_msg, msg_id);
@@ -182,14 +175,7 @@ void kz_ws_event_client_disconnect(edict_t* pEntity)
 
     kz_ws_build_msg(WSMsgOut::PLAYER_LEAVE, data_val, message, msg_id);
 
-#ifdef SHARED_PTR_DBG
-    auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
-        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-        delete p;
-    });
-#else
     auto shared_msg = std::make_shared<std::string>(std::move(message));
-#endif
 
     kz_storage_save(shared_msg, WSMsgOut::PLAYER_LEAVE, msg_id, StorageTable::outgoing_queue);
     kz_ws_queue_msg(shared_msg, msg_id);
@@ -206,14 +192,7 @@ void kz_ws_event_map_change(void)
 
     kz_ws_build_msg(WSMsgOut::MAP_CHANGE, data_val, message, msg_id);
 
-#ifdef SHARED_PTR_DBG
-    auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
-        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-        delete p;
-    });
-#else
     auto shared_msg = std::make_shared<std::string>(std::move(message));
-#endif
 
     kz_storage_save(shared_msg, WSMsgOut::MAP_CHANGE, msg_id, StorageTable::outgoing_queue);
     kz_ws_queue_msg(shared_msg, msg_id);
@@ -334,14 +313,8 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
             std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
             g_active_uploads.insert(local_uid);
         }
-#ifdef SHARED_PTR_DBG
-        auto shared_msg = std::shared_ptr<std::string>(new std::string(metadata.local_uid), [](std::string* p) {
-            MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-            delete p;
-        });
-#else
+
         auto shared_msg = std::make_shared<std::string>(metadata.local_uid);
-#endif
 
         if (kz_api_log_upload->value > 0.0f)
         {

@@ -87,14 +87,7 @@ void kz_storage_load()
                     outgoing.getColumn(0).getInt64(), // msg_id
                     outgoing.getColumn(3).getInt64(), // timestamp
                     StorageTable::outgoing_queue,
-#ifdef SHARED_PTR_DBG
-                    std::shared_ptr<std::string>(new std::string(std::move(outgoing.getColumn(2).getText())), [](std::string* p) {
-                        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-                        delete p;
-                    })
-#else
                     std::make_shared<std::string>(std::move(outgoing.getColumn(2).getText()))
-#endif
             });
         }
         while (upload.executeStep())
@@ -105,14 +98,7 @@ void kz_storage_load()
                     upload.getColumn(0).getInt64(), // msg_id
                     upload.getColumn(3).getInt64(), // timestamp
                     StorageTable::upload_queue,
-#ifdef SHARED_PTR_DBG
-                    std::shared_ptr<std::string>(new std::string(std::move(upload.getColumn(2).getText())), [](std::string* p) {
-                        MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-                        delete p;
-                    })
-#else
                     std::make_shared<std::string>(std::move(upload.getColumn(2).getText())) // text as -> local_uid
-#endif
             });
         }
     }

@@ -759,14 +759,8 @@ static void kz_rp_writer_thread(void)
                         uint64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
                         kz_ws_build_msg(WSMsgOut::ADD_RECORD, data_val, message, msg_id, &g_replay_writer_log);
 
-#ifdef SHARED_PTR_DBG
-                        auto shared_msg = std::shared_ptr<std::string>(new std::string(std::move(message)), [](std::string* p) {
-                            MF_Log("[DEBUG] DELETED: %p -> %s", (void*)p, p->c_str());
-                            delete p;
-                        });
-#else
                         auto shared_msg = std::make_shared<std::string>(std::move(message));
-#endif
+
                         kz_storage_save(shared_msg, WSMsgOut::ADD_RECORD, msg_id, StorageTable::outgoing_queue);
                         kz_ws_send_msg(*shared_msg, msg_id);
                     }
