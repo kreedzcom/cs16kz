@@ -106,5 +106,6 @@ extern std::function<void()> kz_ws_ack_map_info(JSON_Object* obj);
 extern std::function<void()> kz_ws_ack_player_join(JSON_Object* obj);
 extern std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj);
 extern std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj);
+extern std::function<void()> kz_ws_ack_error(JSON_Object* obj);
 
 #endif

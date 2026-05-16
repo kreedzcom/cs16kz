@@ -209,6 +209,11 @@ std::function<void()> kz_ws_ack_invalid(JSON_Object* obj)
     kz_log(&g_ws_log,"[kz_ws_ack_invalid] Unhandled msg_type: %d", (int)json_object_get_number(obj, "msg_type"));
     return nullptr;
 }
+std::function<void()> kz_ws_ack_error(JSON_Object* obj)
+{
+    kz_log(&g_ws_log, "[kz_ws_ack_error] INFO: %s", json_object_dotget_string(obj, "data.message"));
+    return nullptr;
+}
 std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
 {
     ACK_CHECK_MISSING(data.heartbeat_interval);
