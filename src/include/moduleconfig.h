@@ -26,10 +26,6 @@
  *   to add multiple entries.
  */
 
-#define MODULE_VERSION_MAJOR 0
-#define MODULE_VERSION_MINOR 1
-#define MODULE_VERSION "0.1.0"
-
 // MD5 checksum of the compiled Linux binary (32 hex chars = 16 bytes).
 // Set via -DMODULE_CHECKSUM=\"<md5hex>\" in the build system after linking.
 #ifndef MODULE_CHECKSUM

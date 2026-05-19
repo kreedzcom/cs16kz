@@ -55,7 +55,44 @@ fn hashFilesInSrc(allocator: std.mem.Allocator) ![]const u8 {
     const hex_chars = std.fmt.bytesToHex(digest, .lower);
     return try std.fmt.allocPrint(allocator, "\"{s}\"", .{&hex_chars});
 }
-pub fn build(b: *std.Build) !void
+fn getGitVersion(b: *std.Build) []const u8 {
+
+    const desc_res = std.process.Child.run(.{
+        .allocator = b.allocator,
+        .argv = &.{ "git", "describe", "--tags", "--always", "--abbrev=7" },
+    }) catch return "0.1.0-unknown";
+
+
+    const status_res = std.process.Child.run(.{
+        .allocator = b.allocator,
+        .argv = &.{ "git", "status", "--porcelain" },
+    }) catch return "0.1.0-unknown";
+
+    var tag_out = std.mem.trimRight(u8, desc_res.stdout, "\r\n");
+    if (tag_out.len > 0 and tag_out[0] == 'v') tag_out = tag_out[1..];
+
+    const is_dirty = status_res.stdout.len > 0;
+
+    if (!std.mem.containsAtLeast(u8, tag_out, 1, "-g")) {
+        const hash_res = std.process.Child.run(.{
+            .allocator = b.allocator,
+            .argv = &.{ "git", "rev-parse", "--short=7", "HEAD" },
+        }) catch return "0.1.0-unknown";
+
+        const hash_out = std.mem.trimRight(u8, hash_res.stdout, "\r\n");
+
+        return b.fmt("{s}-g{s}{s}", .{
+            tag_out,
+            hash_out,
+            if (is_dirty) "-dirty" else ""
+        });
+    }
+
+    return b.fmt("{s}{s}", .{
+        tag_out,
+        if (is_dirty and !std.mem.endsWith(u8, tag_out, "-dirty")) "-dirty" else ""
+    });
+}pub fn build(b: *std.Build) !void
 {
     const target = b.standardTargetOptions(.{});
 	
@@ -295,7 +332,21 @@ pub fn build(b: *std.Build) !void
 	const hash = try hashFilesInSrc(b.allocator);
 	lib.root_module.addCMacro("MODULE_CHECKSUM", hash);
 	defer b.allocator.free(hash);
-	
+
+	const full_version = getGitVersion(b);
+	var tokenizer = std.mem.tokenizeScalar(u8, full_version, '.');
+	const major = tokenizer.next() orelse "0";
+	const minor = tokenizer.next() orelse "0";
+
+	const raw_patch = tokenizer.next() orelse "0";
+	var patch_tokenizer = std.mem.tokenizeScalar(u8, raw_patch, '-');
+	const patch = patch_tokenizer.next() orelse "0";
+
+	lib.root_module.addCMacro("MODULE_VERSION_MAJOR", major);
+	lib.root_module.addCMacro("MODULE_VERSION_MINOR", minor);
+	lib.root_module.addCMacro("MODULE_VERSION_PATCH", patch);
+	lib.root_module.addCMacro("MODULE_VERSION", b.fmt("\"{s}\"", .{full_version}));
+
 	lib.linkLibrary(parson);
 	lib.linkLibrary(sqlitecpp);
 	lib.linkLibrary(ixwebsocket);
