@@ -6,6 +6,8 @@ new Float:g_fPauseTime[33];
 
 public plugin_init()
 {
+    register_concmd("get_map_details", "get_map_details");
+
 	register_concmd("run_start",   "cmd_start");
 	register_concmd("run_pause",   "cmd_pause")
 	register_concmd("run_unpause", "cmd_unpause");
@@ -16,7 +18,15 @@ public plugin_init()
 	kz_api_get_map_details("kz_longjump2", "map_details_handler");
 	kz_api_get_map_details("bkz_goldbhop", "map_details_handler");
 }
-public map_details_handler(mapname[], wr[], sr[], map_props[3])
+public get_map_details(id, level, cid)
+{
+    new szArg[64];
+    read_argv(1, szArg, charsmax(szArg);
+    kz_api_get_map_details(szArg, "map_details_handler");
+
+    return 1;
+}
+public map_details_handler(mapname[], wr_pro[], wr_noob[], map_props[3])
 {
 	new szType[32], szLength[32], szDifficulty[32];
 
@@ -24,7 +34,15 @@ public map_details_handler(mapname[], wr[], sr[], map_props[3])
 	kz_api_get_map_length(map_props[1], szLength, charsmax(szLength));
 	kz_api_get_map_difficulty(map_props[2], szDifficulty, charsmax(szDifficulty));
 
-	server_print("[AMXX] Received details for map (%s): [type: %d][length: %d][diff: %d] - [%s][%s][%s]", mapname, map_props[0], map_props[1], map_props[2], szType, szLength, szDifficulty);
+    console_print(0, "--------------------");
+    console_print(0, "[*] Map name:       %s",        mapname);
+    console_print(0, "[*] Map type:       %s (%d)",   szType, map_props[0]);
+    console_print(0, "[*] Map length:     %s (%d)",   szLength, map_props[1]);
+    console_print(0, "[*] Map difficulty: %s (%d)",   szDifficulty, map_props[2]);
+    console_print(0, "--------------------");
+    console_print(0, "[*] WR Noob:        %s",        wr_noob);
+    console_print(0, "[*] WR Pro:         %s",        wr_pro);
+    console_print(0, "--------------------");
 }
 public cmd_start(id)
 {

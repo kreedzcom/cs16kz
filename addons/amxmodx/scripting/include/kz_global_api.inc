@@ -10,7 +10,7 @@
  * Requests map details for a specific map.
  *
  * @note The handler function should follow this signature:
- * public handler(mapname[], wr[], sr[], map_props[3]);
+ * public handler(mapname[], wr_pro[], wr_noob[], map_props[3]);
  *
  * @note map_props[3] layout:
  * [0] = map type       (KZM_BHOP - KZM_SPECIAL)

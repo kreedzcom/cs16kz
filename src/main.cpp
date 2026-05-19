@@ -106,6 +106,7 @@ void FN_AMXX_PLUGINSLOADED()
 
     if (g_initialiazed && g_websocket_state.load() == WSState::Connected)
     {
+        g_current_map_info.updated = false;
         kz_ws_event_map_change();
     }
 

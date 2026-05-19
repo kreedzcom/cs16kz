@@ -223,6 +223,19 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
     g_websocket.setMinWaitBetweenReconnectionRetries(5000);
     g_websocket.setMaxWaitBetweenReconnectionRetries(15000);
 
+    JSON_Value* map_info_val = json_object_dotget_value(obj, "data.map_info");
+
+    if (map_info_val != nullptr && json_value_get_type(map_info_val) == JSONObject)
+    {
+        JSON_Value* temp_root = json_value_init_object();
+        json_object_set_value(json_value_get_object(temp_root), "data", json_value_deep_copy(map_info_val));
+
+        // bit of a hack because im too lazy to do proper parsing
+        auto ret = kz_ws_ack_map_info(json_value_get_object(temp_root));
+
+        json_value_free(temp_root);
+        return ret;
+    }
     kz_log(&g_ws_log,"[kz_ws_ack_hello] Heartbeat interval: %d", heartbeat_interval);
     return nullptr;
 }
@@ -233,8 +246,8 @@ std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
     char szMap[64];
     snprintf(szMap, sizeof(szMap), "%s", json_object_dotget_string(obj, "data.map_name"));
 
-    char szWR[128]  = {0};
-    char szSWR[128] = {0};
+    char szWR_Pro[128]  = {0};
+    char szWR_Noob[128] = {0};
 
     const char* wr_pro_steamid = json_object_dotget_string(obj, "data.wr_pro_steamid");
     double wr_pro_time_ms      = json_object_dotget_number(obj, "data.wr_pro_time_ms");
@@ -242,7 +255,7 @@ std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
     {
         char time_str[32];
         kz_ws_format_time(time_str, sizeof(time_str), (int64_t)wr_pro_time_ms);
-        snprintf(szWR, sizeof(szWR), "%s (%s)", wr_pro_steamid, time_str);
+        snprintf(szWR_Pro, sizeof(szWR_Pro), "%s (%s)", wr_pro_steamid, time_str);
     }
 
     const char* wr_nub_steamid = json_object_dotget_string(obj, "data.wr_nub_steamid");
@@ -251,20 +264,41 @@ std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
     {
         char time_str[32];
         kz_ws_format_time(time_str, sizeof(time_str), (int64_t)wr_nub_time_ms);
-        snprintf(szSWR, sizeof(szSWR), "%s (%s)", wr_nub_steamid, time_str);
+        snprintf(szWR_Noob, sizeof(szWR_Noob), "%s (%s)", wr_nub_steamid, time_str);
     }
 
-    int map_props[3] = {0, 0, 0};
+    int map_props[3] = {-1, -1, -1};
+    if (json_object_dothas_value_of_type(obj, "data.type", JSONNumber))
+    {
+        map_props[0] = json_object_dotget_number(obj, "data.type");
+    }
+    if (json_object_dothas_value_of_type(obj, "data.length", JSONNumber))
+    {
+        map_props[1] = json_object_dotget_number(obj, "data.length");
+    }
+    if (json_object_dothas_value_of_type(obj, "data.difficulty", JSONNumber))
+    {
+        map_props[2] = json_object_dotget_number(obj, "data.difficulty");
+    }
 
     int64_t msg_id = (int64_t)json_object_get_number(obj, "msg_id");
-    return [szWR, szSWR, szMap, map_props, msg_id]() mutable {
+    return [szWR_Pro, szWR_Noob, szMap, map_props, msg_id]() mutable {
         auto it = g_plugin_callbacks.find(msg_id);
 
         if (it != g_plugin_callbacks.end())
         {
-            auto props = MF_PrepareCellArray(map_props, ARRAYSIZE(map_props));
-            MF_ExecuteForward(it->second.fwd, szMap, szWR, szSWR, props);
-            MF_UnregisterSPForward(it->second.fwd);
+            kz_call_map_info_forward(it->second.fwd, szMap, szWR_Pro, szWR_Noob, map_props, ARRAYSIZE(map_props));
+        }
+        else if (FStrEq(szMap, STRING(gpGlobals->mapname)))
+        {
+            g_current_map_info.map_props[0] = map_props[0];
+            g_current_map_info.map_props[1] = map_props[1];
+            g_current_map_info.map_props[2] = map_props[2];
+
+            snprintf(g_current_map_info.szWR_Pro, sizeof(szWR_Pro), "%s", szWR_Pro);
+            snprintf(g_current_map_info.szWR_Noob, sizeof(szWR_Noob), "%s", szWR_Noob);
+
+            g_current_map_info.updated = true;
         }
         else
         {

@@ -6,6 +6,7 @@
 /**
  * Map types
  */
+
 enum
 {
 	KZM_BHOP,
@@ -20,7 +21,7 @@ enum
  */
 enum
 {
-	KZM_VERY_SHORT = 0,
+	KZM_VERY_SHORT,
 	KZM_SHORT,
 	KZM_MIDDLE,
 	KZM_LONG,
@@ -32,7 +33,7 @@ enum
  */
 enum
 {
-	KZM_BEGINNER = 0,
+	KZM_BEGINNER,
 	KZM_EASY,
 	KZM_EASY_MEDIUM,
 	KZM_MEDIUM,
@@ -78,6 +79,7 @@ stock kz_api_get_map_type(type, output[], maxlen)
 		case KZM_SLIDE:   formatex(output, maxlen, "Slide");
 		case KZM_MIX:     formatex(output, maxlen, "Mix");
 		case KZM_SPECIAL: formatex(output, maxlen, "Special");
+        default:          formatex(output, maxlen, "Unknown");
 	}
 	return 0;
 }
@@ -100,6 +102,7 @@ stock kz_api_get_map_length(length, output[], maxlen)
 		case KZM_MIDDLE:     formatex(output, maxlen, "Middle");
 		case KZM_LONG:       formatex(output, maxlen, "Long");
 		case KZM_VERY_LONG:  formatex(output, maxlen, "Very Long");
+        default:             formatex(output, maxlen, "Unknown");
 	}
 	return 0;
 }
@@ -127,6 +130,7 @@ stock kz_api_get_map_difficulty(difficulty, output[], maxlen)
 		case KZM_EXTREME:       formatex(output, maxlen, "Extreme");
 		case KZM_EXTREME_DEATH: formatex(output, maxlen, "Extreme-Death");
 		case KZM_DEATH:         formatex(output, maxlen, "Death");
+        default:                formatex(output, maxlen, "Unknown");
 	}
 	return 0;
 }

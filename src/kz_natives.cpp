@@ -8,6 +8,15 @@
 #include "kz_storage.h"
 #include "kz_natives.h"
 
+map_info_t g_current_map_info;
+void kz_call_map_info_forward(int fwd, const char* map, const char* pro, const char* noob, int* map_props, size_t map_props_size)
+{
+    auto props = MF_PrepareCellArray(map_props, map_props_size);
+
+    MF_ExecuteForward(fwd, map, pro, noob, props);
+    MF_UnregisterSPForward(fwd);
+}
+
 static inline int validate_params(AMX* amx, cell* params, int min_params)
 {
     int total_params = (params[0] / sizeof(cell));
@@ -60,6 +69,11 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
     {
         MF_LogError(amx, AMX_ERR_NATIVE, "Function is not present \"%s\"", handler);
         return 0;
+    }
+    if (FStrEq(mapname, STRING(gpGlobals->mapname)) && g_current_map_info.updated)
+    {
+        kz_call_map_info_forward(fwd, mapname, g_current_map_info.szWR_Pro, g_current_map_info.szWR_Noob, g_current_map_info.map_props, ARRAYSIZE(g_current_map_info.map_props));
+        return 1;
     }
 
     JSON_Value* data_val = json_value_init_object();
