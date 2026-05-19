@@ -121,13 +121,15 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
         {
             kz_storage_uninit();
             kz_log(&g_ws_log, "[WS] Connection closed (%d): %s", msg->closeInfo.code, msg->closeInfo.reason.c_str());
-            switch(msg->closeInfo.code)
+            // 1008 = policy violation (bad token, unknown plugin version, cutoff, etc.) — do not spin-reconnect.
+            if (msg->closeInfo.code == 1008 || msg->closeInfo.code == 1003)
             {
-                default:
-                {
-                    g_websocket_state.store(WSState::Disconnected);
-                    break;
-                }
+                g_websocket.disableAutomaticReconnection();
+                g_websocket_state.store(WSState::Disconnected);
+            }
+            else
+            {
+                g_websocket_state.store(WSState::Disconnected);
             }
             break;
         }

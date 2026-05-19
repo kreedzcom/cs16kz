@@ -7,6 +7,7 @@
 ## Features
 
 - **WebSocket client** — Persistent connection to the Kreedz API (default endpoint: `wss://api.kreedz.com/ws/game`), with retries and structured message handling.
+- **Security-aligned protocol** — `hello` version/checksum, `add_record` with `gochecks`/`checkpoints`, cross-community ban kicks on join, replay upload with `FILE_ACK` retry on failure, and cleanup when the API rejects a record.
 - **Pawn API** — Natives and includes under `addons/amxmodx/scripting/include/` for map lookups, run lifecycle (`started` / `paused` / `unpaused` / `rejected` / `finished`), and related helpers.
 - **Local persistence** — SQLite-backed storage for queued/outgoing traffic and replay-related data paths (see `kz_storage` / `kz_replay` in `src/`).
 - **ReHLDS integration** — Hooks into ReHLDS APIs where available for server-side behavior that matches modern CS 1.6 hosting stacks.

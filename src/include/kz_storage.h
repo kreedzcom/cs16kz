@@ -33,4 +33,6 @@ extern void kz_storage_save(std::shared_ptr<std::string> text, int64_t msg_type,
 extern void kz_storage_delete(int64_t msg_id, StorageTable table);
 extern void kz_storage_delete_by_value(const std::string& value, StorageTable table);
 extern void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table);
+/** Returns false if [msg_id] is not in outgoing_queue or storage is unavailable. */
+extern bool kz_storage_try_get_outgoing(int64_t msg_id, int64_t* msg_type_out, std::string* msg_out);
 #endif
