@@ -71,7 +71,8 @@ fn getGitVersion(b: *std.Build) []const u8 {
     var tag_out = std.mem.trimRight(u8, desc_res.stdout, "\r\n");
     if (tag_out.len > 0 and tag_out[0] == 'v') tag_out = tag_out[1..];
 
-    const is_dirty = status_res.stdout.len > 0;
+    const clean_status = std.mem.trimRight(u8, status_res.stdout, "\r\n ");
+    const is_dirty = clean_status.len > 0;
 
     if (!std.mem.containsAtLeast(u8, tag_out, 1, "-g")) {
         const hash_res = std.process.Child.run(.{
@@ -92,7 +93,8 @@ fn getGitVersion(b: *std.Build) []const u8 {
         tag_out,
         if (is_dirty and !std.mem.endsWith(u8, tag_out, "-dirty")) "-dirty" else ""
     });
-}pub fn build(b: *std.Build) !void
+}
+pub fn build(b: *std.Build) !void
 {
     const target = b.standardTargetOptions(.{});
 	
