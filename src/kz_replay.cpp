@@ -183,6 +183,12 @@ void kz_rp_update_header(void)
     const char* addr = CVAR_GET_STRING("net_address");
     split_net_address(addr, szIP, sizeof(szIP), szPort, sizeof(szPort));
 
+    if (FStrEq(szIP, "0.0.0.0"))
+    {
+        snprintf(szIP, sizeof(szIP), "%s", CVAR_GET_STRING("ip"));
+        snprintf(szPort, sizeof(szPort), "%s", CVAR_GET_STRING("port"));
+    }
+
     g_header.magic          = 0x4B52502146494C45;
     g_header.version        = 0;
     g_header.server_ip      = inet_addr(szIP);
