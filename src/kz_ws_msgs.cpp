@@ -23,16 +23,25 @@
 std::mutex g_active_uploads_mtx;
 std::set<std::string> g_active_uploads;
 
-static void kz_ws_delete_replay_files(const char* local_uid)
+static void kz_ws_delete_replay_files(const char* local_uid, const char* mapname)
 {
     if (!local_uid || !local_uid[0])
     {
         return;
     }
+
     std::error_code ec;
     for (const char* ext : {".krpr", ".krpz"})
     {
-        std::filesystem::path path = g_data_dir / "kz_global" / "replays" / local_uid;
+        std::filesystem::path path;
+        if (mapname && mapname[0])
+        {
+            path = g_data_dir / "kz_global" / "replays" / mapname / local_uid;
+        }
+        else
+        {
+            path = g_data_dir / "kz_global" / "replays" / local_uid;
+        }
         path.replace_extension(ext);
         std::filesystem::remove(path, ec);
     }
@@ -46,10 +55,11 @@ static bool kz_ws_requeue_replay_upload(const char* local_uid)
     }
 
     std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / local_uid;
-    replay.replace_extension(".krpr");
+    replay.replace_extension(".krpz");
+
     if (!std::filesystem::exists(replay))
     {
-        replay.replace_extension(".krpz");
+        replay.replace_extension(".krpr");
     }
     if (!std::filesystem::exists(replay))
     {
@@ -276,39 +286,43 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
 
     int64_t msg_type = 0;
     std::string stored;
-    if (!kz_storage_try_get_outgoing(msg_id, &msg_type, &stored) || msg_type != WSMsgOut::ADD_RECORD)
+
+    if (!kz_storage_try_get_outgoing(msg_id, &msg_type, &stored))
     {
+        kz_log(&g_ws_log, "[kz_ws_ack_error] Failed to find msg_id (%d) in storage", msg_id);
         return nullptr;
     }
 
     JSON_Value* stored_val = json_parse_string(stored.c_str());
+
     if (!stored_val)
     {
         return nullptr;
     }
 
-    const char* local_uid = json_object_dotget_string(json_value_get_object(stored_val), "data.local_uid");
-    char uid_copy[64] = {0};
-    if (local_uid && local_uid[0])
+    std::function<void()> callback = nullptr;
+
+    if (msg_type == WSMsgOut::ADD_RECORD)
     {
-        snprintf(uid_copy, sizeof(uid_copy), "%s", local_uid);
+        const char* r_uid = json_object_dotget_string(json_value_get_object(stored_val), "data.local_uid");
+        if (r_uid)
+        {
+            callback = [msg = message ? std::string(message) : std::string(), uid = std::string(r_uid)]() {
+                kz_ws_delete_replay_files(uid.c_str(), nullptr);
+                kz_storage_delete_by_value(uid, StorageTable::upload_queue);
+                {
+                    std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
+                    g_active_uploads.erase(uid);
+                }
+                kz_log(nullptr, "[kz_ws_ack_error] Discarded replay for uid=%s (%s)", uid.c_str(), msg.c_str());
+            };
+        }
+    }
+    else
+    {
     }
     json_value_free(stored_val);
-
-    if (!uid_copy[0])
-    {
-        return nullptr;
-    }
-
-    return [uid = std::string(uid_copy), msg = std::string(message)]() {
-        kz_ws_delete_replay_files(uid.c_str());
-        kz_storage_delete_by_value(uid, StorageTable::upload_queue);
-        {
-            std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-            g_active_uploads.erase(uid);
-        }
-        kz_log(&g_ws_log, "[kz_ws_ack_error] Discarded replay for uid=%s (%s)", uid.c_str(), msg.c_str());
-    };
+    return callback;
 }
 std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
 {
