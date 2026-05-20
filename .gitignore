@@ -4,3 +4,11 @@
 *.iws
 *.ipr
 out/
+
+# Zig
+.zig-cache/
+zig-out/
+
+# clangd
+.cache/
+compile_commands.json
