@@ -307,7 +307,7 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
         const char* r_uid = json_object_dotget_string(json_value_get_object(stored_val), "data.local_uid");
         if (r_uid)
         {
-            callback = [msg = message ? std::string(message) : std::string(), uid = std::string(r_uid)]() {
+            callback = [msg = std::string(message), uid = std::string(r_uid)]() {
                 kz_ws_delete_replay_files(uid.c_str(), nullptr);
                 kz_storage_delete_by_value(uid, StorageTable::upload_queue);
                 {
