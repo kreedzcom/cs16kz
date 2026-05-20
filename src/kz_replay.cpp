@@ -848,10 +848,8 @@ static void kz_rp_upload_thread(void)
                     memcpy(header->local_uid, item->local_uid, sizeof(header->local_uid));
 
                     g_websocket.sendBinary(std::string(buffer, sizeof(*header) + bytes));
-                    if ((i & 15) == 0)
-                    {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                    }
+                    // Stay under API replay byte rate limit (~5 MiB/s per server).
+                    std::this_thread::sleep_for(std::chrono::milliseconds(13));
                 }
                 if (kz_api_log_upload->value > 0.0f)
                 {

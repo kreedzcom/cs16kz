@@ -269,6 +269,36 @@ void kz_storage_delete(int64_t msg_id, StorageTable table)
         kz_log(&g_storage_log, "[Storage] delete: %s", e.what());
     }
 }
+bool kz_storage_try_get_outgoing(int64_t msg_id, int64_t* msg_type_out, std::string* msg_out)
+{
+    if (!kz_storage_database || msg_id <= 0)
+    {
+        return false;
+    }
+    try
+    {
+        SQLite::Statement query(*kz_storage_database, "SELECT msg_type, msg FROM outgoing_queue WHERE id = ?");
+        query.bind(1, static_cast<long long>(msg_id));
+        if (!query.executeStep())
+        {
+            return false;
+        }
+        if (msg_type_out)
+        {
+            *msg_type_out = query.getColumn(0).getInt64();
+        }
+        if (msg_out)
+        {
+            *msg_out = query.getColumn(1).getText();
+        }
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] try_get_outgoing: %s", e.what());
+        return false;
+    }
+}
 void kz_storage_delete_by_value(const std::string& value, StorageTable table)
 {
     try
