@@ -28,7 +28,4 @@ extern const size_t g_server_cvars_size;
 
 extern const pr_cvar_t g_player_cvars[];
 extern const size_t g_player_cvars_size;
-
-extern void kz_run_cvar_checker(void);
-extern void kz_qqc_handler(const edict_t* pEdict, int requestId, const char* cvar, const char* value);
 #endif

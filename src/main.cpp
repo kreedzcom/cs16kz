@@ -146,9 +146,7 @@ void FN_StartFrame()
     }
     kz_log_flush(50000000);
     kz_ac_frame();
-    kz_run_cvar_checker();
     kz_ws_run_tasks(5);
-
     kz_pb_frame();
 
     RETURN_META(MRES_IGNORED);
@@ -220,7 +218,7 @@ void FN_MessageBegin(int msg_dest, int msg_type, const float *pOrigin, edict_t *
 
 void FN_CvarValue2(const edict_t* pEdict, int requestId, const char* cvar, const char* value)
 {
-    kz_qqc_handler(pEdict, requestId, cvar, value);
+    kz_ac_querycvar_result(pEdict, requestId, cvar, value);
     RETURN_META(MRES_IGNORED);
 }
 /***************************************************************************************************************/
@@ -253,6 +251,13 @@ void FN_PlayerPostThink(edict_t* pEntity)
         kz_ac_postthink(id, pEntity);
     }
     RETURN_META(MRES_IGNORED);
+}
+BOOL FN_ClientConnect_Post(edict_t *pEntity, const char *pszName, const char *pszAddress, char szRejectReason[ 128 ])
+{
+    int id = indexOfEdict(pEntity);
+    kz_ac_connect(id, pEntity);
+
+    RETURN_META_VALUE(MRES_IGNORED, TRUE);
 }
 void FN_ClientPutInServer_Post(edict_t* pEntity)
 {
