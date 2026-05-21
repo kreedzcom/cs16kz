@@ -1,5 +1,6 @@
 #include "amxxmodule.h"
 #include "common/hookchains.h"
+#include "moduleconfig.h"
 #include "resdk/mod_rehlds_api.h"
 
 #include "amtl/os/am-shared-library.h"
@@ -253,7 +254,7 @@ void FN_PlayerPostThink(edict_t* pEntity)
     }
     RETURN_META(MRES_IGNORED);
 }
-BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* pszAddress, char szRejectReason[128])
+void FN_ClientPutInServer_Post(edict_t* pEntity)
 {
     int id = ENTINDEX(pEntity);
     g_players[id].is_bot = MF_IsPlayerBot(id);
@@ -267,9 +268,9 @@ BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* ps
 
         char szIP[16];
         const char* szAuth = GETPLAYERAUTHID(pEntity);
-        split_net_address(pszAddress, szIP, sizeof(szIP), nullptr, 0);
+        split_net_address(MF_GetPlayerIP(id), szIP, sizeof(szIP), nullptr, 0);
 
-        snprintf(g_players[id].nickname, sizeof(g_players[0].nickname), "%s", pszName);
+        snprintf(g_players[id].nickname, sizeof(g_players[0].nickname), "%s", MF_GetPlayerName(id));
         snprintf(g_players[id].ipaddr, sizeof(g_players[0].ipaddr), "%s", szIP);
         snprintf(g_players[id].steamid, sizeof(g_players[0].steamid), "%s", szAuth);
 
@@ -280,7 +281,7 @@ BOOL FN_ClientConnect_Post(edict_t* pEntity, const char* pszName, const char* ps
 
         kz_ws_event_client_connect(pEntity);
     }
-    RETURN_META_VALUE(MRES_IGNORED, TRUE);
+    RETURN_META(MRES_IGNORED);
 }
 /***************************************************************************************************************/
 /***************************************************************************************************************/
