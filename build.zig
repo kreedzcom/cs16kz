@@ -349,6 +349,9 @@ pub fn build(b: *std.Build) !void
 	lib.root_module.addCMacro("MODULE_VERSION_PATCH", patch);
 	lib.root_module.addCMacro("MODULE_VERSION", b.fmt("\"{s}\"", .{full_version}));
 
+	std.debug.print(">>> Compiled version: \"{s}\" <<<\n", .{full_version});
+	std.debug.print(">>> Compiled checksum: {s} <<<\n", .{hash});
+
 	lib.linkLibrary(parson);
 	lib.linkLibrary(sqlitecpp);
 	lib.linkLibrary(ixwebsocket);
