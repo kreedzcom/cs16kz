@@ -109,12 +109,12 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
         }
         case ix::WebSocketMessageType::Ping:
         {
-            kz_log(&g_ws_log, "[WS] Ping.");
+            //kz_log(&g_ws_log, "[WS] Ping.");
             break;
         }
         case ix::WebSocketMessageType::Pong:
         {
-            kz_log(&g_ws_log, "[WS] Pong.");
+            //kz_log(&g_ws_log, "[WS] Pong.");
             break;
         }
         case ix::WebSocketMessageType::Close:
