@@ -621,8 +621,8 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
 
     if (kz_api_log_parse->value > 0.0f)
     {
-        std::string c_bytes = formay_bytes(static_cast<uint64_t>(src.size()));
-        std::string d_bytes = formay_bytes(static_cast<uint64_t>(d_buffer.size()));
+        std::string c_bytes = format_bytes(static_cast<uint64_t>(src.size()));
+        std::string d_bytes = format_bytes(static_cast<uint64_t>(d_buffer.size()));
 
         kz_log(&g_pb_parse_log, "---------------------------------------------------------");
         kz_log(&g_pb_parse_log, "[PARSE] File: %s", std::filesystem::relative(file, g_data_dir).c_str());

@@ -24,7 +24,7 @@ edict_t* g_pEdicts = nullptr;
 player_t g_players[33];
 
 int g_msg_teaminfo = -1;
-bool g_initialiazed = false;
+bool g_initialized = false;
 bool g_early_mapchange = false;
 float g_wait_after_load = 0.0f;
 
@@ -79,14 +79,14 @@ void FN_AMXX_PLUGINSLOADED()
     g_early_mapchange = false;
     g_wait_after_load = 1.0f;
 
-    if (!g_initialiazed)
+    if (!g_initialized)
     {
         if (!kz_init_rehooks() && !kz_init_detours())
         {
             MF_Log("ERROR: Failed to install one or multiple hooks. Some features might be disabled.");
             return;
         }
-        g_initialiazed = true;
+        g_initialized = true;
 
         kz_log_init(std::this_thread::get_id());
         kz_storage_init();
@@ -106,7 +106,7 @@ void FN_AMXX_PLUGINSLOADED()
     }
     kz_rp_update_header();
 
-    if (g_initialiazed && g_websocket_state.load() == WSState::Connected)
+    if (g_initialized && g_websocket_state.load() == WSState::Connected)
     {
         g_current_map_info.updated = false;
         kz_ws_event_map_change();
@@ -118,7 +118,7 @@ void FN_AMXX_PLUGINSLOADED()
 void FN_GameShutdown()
 {
     kz_log_flush(-1);
-    if (g_initialiazed)
+    if (g_initialized)
     {
         kz_rp_uninit();
         kz_pb_uninit();
@@ -141,7 +141,7 @@ void FN_GameShutdown()
 /***************************************************************************************************************/
 void FN_StartFrame()
 {
-    if (!g_initialiazed)
+    if (!g_initialized)
     {
         RETURN_META(MRES_IGNORED);
     }

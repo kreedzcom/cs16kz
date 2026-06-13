@@ -7,7 +7,7 @@ extern void fm_set_user_team(edict_t* ed, int team);
 extern void fm_cs_user_spawn(edict_t* ed);
 extern void fm_give_item(edict_t* ed, const char* item);
 
-extern std::string formay_bytes(uint64_t bytes);
+extern std::string format_bytes(uint64_t bytes);
 
 extern void kz_log_init(std::thread::id t);
 extern void kz_log_addq(kz::queue<log_entry>* queue);

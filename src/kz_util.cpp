@@ -99,7 +99,7 @@ void fm_give_item(edict_t* ed, const char* item)
     }
 }
 
-std::string formay_bytes(uint64_t bytes)
+std::string format_bytes(uint64_t bytes)
 {
     const char* units[] = { "bytes", "KB", "MB", "GB", "TB" };
     int i = 0;

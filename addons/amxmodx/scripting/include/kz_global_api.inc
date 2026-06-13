@@ -49,3 +49,13 @@ native kz_api_run_rejected(id, bool:delete_file);
  * Notifies the API that a run has been successfully completed.
  */
 native kz_api_run_finished(id, Float:time);
+
+/**
+ * Notifies the API that a player made a checkpoint.
+ */
+native kz_api_run_checkpoint(id);
+
+/**
+ * Notifies the API that a player teleported to his last checkpoint.
+ */
+native kz_api_run_gocheck(id);

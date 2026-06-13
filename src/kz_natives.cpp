@@ -102,7 +102,7 @@ static cell AMX_NATIVE_CALL kz_api_run_started(AMX* amx, cell* params)
         return 0;
     }
 
-    int id = validate_player(amx, params[1]);;
+    int id = validate_player(amx, params[1]);
     return (id ? kz_rp_run_started(id) : 0);
 }
 
@@ -114,7 +114,7 @@ static cell AMX_NATIVE_CALL kz_api_run_checkpoint(AMX* amx, cell* params)
         return 0;
     }
 
-    int id = validate_player(amx, params[1]);;
+    int id = validate_player(amx, params[1]);
     return (id ? kz_rp_run_checkpoint(id) : 0);
 }
 
@@ -126,7 +126,7 @@ static cell AMX_NATIVE_CALL kz_api_run_gocheck(AMX* amx, cell* params)
         return 0;
     }
 
-    int id = validate_player(amx, params[1]);;
+    int id = validate_player(amx, params[1]);
     return (id ? kz_rp_run_gocheck(id) : 0);
 }
 
@@ -138,7 +138,7 @@ static cell AMX_NATIVE_CALL kz_api_run_paused(AMX* amx, cell* params)
         return 0;
     }
 
-    int id = validate_player(amx, params[1]);;
+    int id = validate_player(amx, params[1]);
     return (id ? kz_rp_run_paused(id) : 0);
 }
 
@@ -150,7 +150,7 @@ static cell AMX_NATIVE_CALL kz_api_run_unpaused(AMX* amx, cell* params)
         return 0;
     }
 
-    int id = validate_player(amx, params[1]);;
+    int id = validate_player(amx, params[1]);
     return (id ? kz_rp_run_unpaused(id) : 0);
 }
 
@@ -162,8 +162,24 @@ static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
         return 0;
     }
 
-    int id = validate_player(amx, params[1]);;
-    return (id ? kz_rp_run_rejected(id, static_cast<bool>(params[2])) : 0);
+    int id = params[1];
+
+    if (id < 1 || id > gpGlobals->maxClients)
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Invalid player index %d", id);
+        return 0;
+    }
+    if (!MF_IsPlayerIngame(id))
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Player not in-game");
+        return 0;
+    }
+    if (MF_IsPlayerBot(id)) 
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "Bots can't make records!");
+        return 0;
+    }
+    return kz_rp_run_rejected(id, static_cast<bool>(params[2]));
 }
 /* native kz_api_run_finished(id, Float:time) */
 static cell AMX_NATIVE_CALL kz_api_run_finished(AMX* amx, cell* params)
@@ -173,7 +189,7 @@ static cell AMX_NATIVE_CALL kz_api_run_finished(AMX* amx, cell* params)
         return 0;
     }
 
-    int id = validate_player(amx, params[1]);;
+    int id = validate_player(amx, params[1]);
     return (id ? kz_rp_run_finished(id, amx_ctof(params[2])) : 0);
 }
 

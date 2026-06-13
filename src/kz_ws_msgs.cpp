@@ -332,6 +332,7 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
     g_websocket.setPingInterval(heartbeat_interval);
     g_websocket.setMinWaitBetweenReconnectionRetries(5000);
     g_websocket.setMaxWaitBetweenReconnectionRetries(15000);
+    kz_log(&g_ws_log,"[kz_ws_ack_hello] Heartbeat interval: %d", heartbeat_interval);
 
     JSON_Value* map_info_val = json_object_dotget_value(obj, "data.map_info");
 
@@ -346,7 +347,6 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
         json_value_free(temp_root);
         return ret;
     }
-    kz_log(&g_ws_log,"[kz_ws_ack_hello] Heartbeat interval: %d", heartbeat_interval);
     return nullptr;
 }
 std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)

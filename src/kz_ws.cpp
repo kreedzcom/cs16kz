@@ -201,7 +201,7 @@ void kz_ws_start(std::string url, std::string token)
     g_websocket.setOnMessageCallback(kz_ws_onmessage);
     g_websocket.start();
 
-    g_websocket_state.store(WSState::Initialiazed);
+    g_websocket_state.store(WSState::Initialized);
 }
 void kz_ws_stop(void)
 {

@@ -349,7 +349,7 @@ std::string kz_rp_mapname_from_header(FILE* fp)
 
     return std::string(buffer);
 }
-static void kz_rp_write_teleports_to_header(FILE *fp, uint32_t checkpoints, uint32_t teleports)
+static void kz_rp_write_run_to_header(FILE *fp, uint32_t checkpoints, uint32_t teleports)
 {
     if (!fp)
     {
@@ -377,7 +377,7 @@ static void kz_rp_write_teleports_to_header(FILE *fp, uint32_t checkpoints, uint
     fseek(fp, current_pos, SEEK_SET);
     return;
 }
-static void kz_rp_teleports_from_header(FILE *fp, uint32_t *checkpoints, uint32_t *teleports)
+static void kz_rp_run_from_header(FILE *fp, uint32_t *checkpoints, uint32_t *teleports)
 {
     if (!fp || !checkpoints || !teleports)
     {
@@ -647,6 +647,7 @@ static void kz_rp_writer_thread(void)
                         kz_log(&g_replay_writer_log, "[KRP] run_start: closing active file descriptor for player (%d)", id);
                     }
 
+                    // TODO: g_header race
                     krp_signal* sig     = reinterpret_cast<krp_signal*>(s_curr->data);
                     krp_header header   = g_header;
                     const char* mapname = g_header.map.name;
@@ -714,7 +715,7 @@ static void kz_rp_writer_thread(void)
                 {
                     if (s_fd[id])
                     {
-                        kz_rp_write_teleports_to_header(s_fd[id], s_checkpoints[id], s_gochecks[id]);
+                        kz_rp_write_run_to_header(s_fd[id], s_checkpoints[id], s_gochecks[id]);
 
                         fclose(s_fd[id]);
                         s_fd[id] = nullptr;
@@ -745,7 +746,7 @@ static void kz_rp_writer_thread(void)
                         s_fd[id] = fopen(s_filepath[id], "rb+");
                         s_counter[id] = 0;
 
-                        kz_rp_teleports_from_header(s_fd[id], &s_checkpoints[id], &s_gochecks[id]);
+                        kz_rp_run_from_header(s_fd[id], &s_checkpoints[id], &s_gochecks[id]);
                     }
                     if (!s_fd[id])
                     {

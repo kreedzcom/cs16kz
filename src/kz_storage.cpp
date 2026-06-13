@@ -19,12 +19,12 @@ std::mutex g_retry_mtx;
 std::vector<retry_msg> g_retry_queue(64);
 
 static thread_local SQLite::Database* kz_storage_database = nullptr;
-static thread_local bool kz_storage_initialiazed = false;
+static thread_local bool kz_storage_initialized = false;
 static thread_local kz::queue<log_entry> g_storage_log(64);
 
 void kz_storage_init(void)
 {
-    if(!kz_storage_initialiazed)
+    if(!kz_storage_initialized)
     {
         kz_log_addq(&g_storage_log);
 
@@ -52,7 +52,7 @@ void kz_storage_init(void)
         kz_storage_database->exec("CREATE TABLE IF NOT EXISTS upload_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg_type INTEGER, local_uid TEXT NOT NULL, created_at INTEGER DEFAULT (strftime('%s','now')))");
         kz_storage_database->setBusyTimeout(5000);
 
-        kz_storage_initialiazed = true;
+        kz_storage_initialized = true;
     }
     catch (const std::exception& e)
     {
@@ -65,7 +65,7 @@ void kz_storage_uninit(void)
     {
         delete kz_storage_database;
         kz_storage_database = nullptr;
-        kz_storage_initialiazed = false;
+        kz_storage_initialized = false;
     }
 }
 void kz_storage_load()
@@ -341,7 +341,7 @@ void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table
                 break;
             }
             case StorageTable::upload_queue:
-            }
+            {
                 statement = "DELETE FROM upload_queue WHERE id = ?";
                 break;
             }
