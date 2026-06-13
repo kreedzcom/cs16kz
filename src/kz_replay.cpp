@@ -530,6 +530,7 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
         }
         else if (type == BIT_FRAMETYPE_EVENT)
         {
+            // TODO: BIT_FRAMETYPE_EVENT
         }
     }
 

@@ -702,6 +702,7 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
         }
         else if (type == BIT_FRAMETYPE_EVENT)
         {
+            // TODO: BIT_FRAMETYPE_EVENT
         }
     }
     for (size_t i = 0; i < sizeof(krp_frame); ++i)
@@ -781,6 +782,7 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
         }
         else if (fe.frame_type == BIT_FRAMETYPE_EVENT)
         {
+            // TODO: BIT_FRAMETYPE_EVENT
         }
 
         krp_frame* f = reinterpret_cast<krp_frame*>(&fe.data);

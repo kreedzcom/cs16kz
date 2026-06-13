@@ -98,6 +98,8 @@ typedef struct  {
     krp_glbvars glb;
 } krp_frame;
 
+static_assert(sizeof(krp_mask) * 8 >= sizeof(krp_frame), "krp_mask needs to be >= than krp_frame");
+
 typedef struct {
     uint8_t type;
     uint8_t player_index;
