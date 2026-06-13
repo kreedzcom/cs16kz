@@ -272,6 +272,10 @@ void kz_rp_write_frame(int id)
 {
     g_current_frame[id].player_index = id;
     g_current_frame[id].type = KRP_SIGNAL_FRAME;
+
+    krp_frame* frame = reinterpret_cast<krp_frame*>(g_current_frame[id].data);
+    frame->glb.frametime = gpGlobals->frametime;
+
     if (!g_replay_writer_queue.try_push(g_current_frame[id]))
     {
         assert(!"This is not supposed to happend.");
@@ -345,6 +349,67 @@ std::string kz_rp_mapname_from_header(FILE* fp)
 
     return std::string(buffer);
 }
+static void kz_rp_write_teleports_to_header(FILE *fp, uint32_t checkpoints, uint32_t teleports)
+{
+    if (!fp)
+    {
+        return;
+    }
+
+    long current_pos = ftell(fp);
+    if (current_pos < 0)
+    {
+        return;
+    }
+
+    size_t cp_offset = offsetof(krp_header, run.checkpoints);
+    size_t tp_offset = offsetof(krp_header, run.teleports);
+
+    if (fseek(fp, (long)cp_offset, SEEK_SET) == 0)
+    {
+        fwrite(&checkpoints, sizeof(uint32_t), 1, fp);
+    }
+    if (fseek(fp, (long)tp_offset, SEEK_SET) == 0)
+    {
+        fwrite(&teleports, sizeof(uint32_t), 1, fp);
+    }
+
+    fseek(fp, current_pos, SEEK_SET);
+    return;
+}
+static void kz_rp_teleports_from_header(FILE *fp, uint32_t *checkpoints, uint32_t *teleports)
+{
+    if (!fp || !checkpoints || !teleports)
+    {
+        return;
+    }
+
+    long current_pos = ftell(fp);
+    if (current_pos < 0)
+    {
+        return;
+    }
+
+    size_t cp_offset = offsetof(krp_header, run.checkpoints);
+    size_t tp_offset = offsetof(krp_header, run.teleports);
+    bool success = false;
+
+    if (fseek(fp, (long)cp_offset, SEEK_SET) == 0 && fread(checkpoints, sizeof(uint32_t), 1, fp) == 1)
+    {
+        if (fseek(fp, (long)tp_offset, SEEK_SET) == 0 && fread(teleports, sizeof(uint32_t), 1, fp) == 1)
+        {
+            success = true;
+        }
+    }
+    if (!success)
+    {
+        *checkpoints = 0;
+        *teleports = 0;
+    }
+
+    fseek(fp, current_pos, SEEK_SET);
+    return;
+}
 static void kz_rp_write_frametype(FILE* fp, krp_packet* curr, uint8_t frametype)
 {
     fwrite(&frametype, sizeof(frametype), 1, fp);
@@ -378,6 +443,7 @@ static void kz_rp_write_keyframe(FILE* fp, krp_packet* curr)
     krp_frame* frame = reinterpret_cast<krp_frame*>(curr->data);
     fwrite(&frame->cmd, sizeof(frame->cmd), 1, fp);
     fwrite(&frame->vars, sizeof(frame->vars), 1, fp);
+    fwrite(&frame->glb, sizeof(frame->glb), 1, fp);
 }
 static void kz_rp_write_delta(FILE* fp, krp_packet* curr, krp_packet* last)
 {
@@ -648,6 +714,8 @@ static void kz_rp_writer_thread(void)
                 {
                     if (s_fd[id])
                     {
+                        kz_rp_write_teleports_to_header(s_fd[id], s_checkpoints[id], s_gochecks[id]);
+
                         fclose(s_fd[id]);
                         s_fd[id] = nullptr;
                     }
@@ -674,8 +742,10 @@ static void kz_rp_writer_thread(void)
                     }
                     if (!s_fd[id])
                     {
-                        s_fd[id] = fopen(s_filepath[id], "ab+");
+                        s_fd[id] = fopen(s_filepath[id], "rb+");
                         s_counter[id] = 0;
+
+                        kz_rp_teleports_from_header(s_fd[id], &s_checkpoints[id], &s_gochecks[id]);
                     }
                     if (!s_fd[id])
                     {

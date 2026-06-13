@@ -1,5 +1,6 @@
 #include "amxxmodule.h"
 #include "common/hookchains.h"
+#include "enginecallbacks.h"
 #include "moduleconfig.h"
 #include "resdk/mod_rehlds_api.h"
 
@@ -230,14 +231,6 @@ void FN_CmdStart(const edict_t* player, const struct usercmd_s* cmd, unsigned in
     {
         kz_rp_set_cmd(id, cmd);
         kz_ac_cmd(id, cmd);
-    }
-    RETURN_META(MRES_IGNORED);
-}
-void FN_PlayerPreThink(edict_t* pEntity)
-{
-    int id = indexOfEdict(pEntity);
-    if (!MF_IsPlayerBot(id))
-    {
     }
     RETURN_META(MRES_IGNORED);
 }

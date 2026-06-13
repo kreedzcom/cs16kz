@@ -87,9 +87,15 @@ typedef struct
     v3f impact_position;
 } krp_usercmd;
 
+typedef struct
+{
+    float frametime;
+} krp_glbvars;
+
 typedef struct  {
     krp_usercmd cmd;
     krp_entvars vars;
+    krp_glbvars glb;
 } krp_frame;
 
 typedef struct {
@@ -105,8 +111,9 @@ typedef struct
     uint64_t    magic;
     uint64_t    version;
 
-    struct { char name[32]; char steamid[35]; }   player;
-    struct { char name[64]; uint32_t checksum; }  map;
+    struct { char name[32]; char steamid[35]; }          player;
+    struct { char name[64]; uint32_t checksum; }         map;
+    struct { uint32_t checkpoints; uint32_t teleports; } run;
 
     uint64_t    timestamp;
     uint32_t    server_ip;

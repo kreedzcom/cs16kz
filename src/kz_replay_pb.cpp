@@ -693,7 +693,7 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
                 {
                     size_t idx = block * 64 + bit;
 
-                    if (idx <= sizeof(krp_frame) && block_val & (1ULL << bit))
+                    if (idx < sizeof(krp_frame) && block_val & (1ULL << bit))
                     {
                         data_sizes[block * 64 + bit]++;
                     }
