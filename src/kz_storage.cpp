@@ -331,32 +331,33 @@ void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table
     }
     try
     {
-        char statement[4096];
-        int written = 0;
+        const char* statement = nullptr;
 
         switch (table)
         {
             case StorageTable::outgoing_queue:
             {
-                written = snprintf(statement, sizeof(statement), "DELETE FROM outgoing_queue WHERE id IN (");
+                statement = "DELETE FROM outgoing_queue WHERE id = ?";
                 break;
             }
             case StorageTable::upload_queue:
-            {
-                written = snprintf(statement, sizeof(statement), "DELETE FROM upload_queue WHERE id IN (");
+            }
+                statement = "DELETE FROM upload_queue WHERE id = ?";
                 break;
             }
         }
 
-        char* ptr = statement + written;
-        size_t remaining = sizeof(statement) - written;
-        for (size_t i = 0; i < ids.size(); ++i)
+        SQLite::Transaction transaction(*kz_storage_database);
+        SQLite::Statement query(*kz_storage_database, statement);
+
+        for (int64_t id : ids)
         {
-            int n = snprintf(ptr, remaining, "%lld%s", static_cast<long long>(ids[i]), (i == ids.size() - 1) ? ")":",");
-            ptr += n;
-            remaining -= n;
+            query.bind(1, static_cast<long long>(id));
+            query.exec();
+            query.reset();
         }
-        kz_storage_database->exec(statement);
+
+        transaction.commit();
     }
     catch (const std::exception& e)
     {
