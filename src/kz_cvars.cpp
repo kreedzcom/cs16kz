@@ -16,6 +16,7 @@ const pr_cvar_t g_server_cvars[] = {
     {"sv_airaccelerate",    "10",       nullptr},
     {"sv_wateraccelerate",  "10",       nullptr},
     {"sv_friction",         "4",        nullptr},
+    {"sv_waterfriction",    "1",        nullptr},
     {"sv_stepsize",         "18",       nullptr},
     {"sv_maxvelocity",      "2000",     nullptr},
     {"sv_cheats",           "0",        nullptr},
@@ -30,6 +31,7 @@ const pr_cvar_t g_server_cvars[] = {
 const size_t g_server_cvars_size = (sizeof(g_server_cvars) / sizeof(pr_cvar_t));
 
 const pr_cvar_t g_player_cvars[] = {
+    {"cl_lw",           "1",    nullptr},
     {"fps_max",         "99.5", nullptr},
     {"fps_override",    "0",    nullptr},
     {"developer",       "0",    nullptr},

@@ -40,7 +40,55 @@ You need a **server API token** from the Kreedz global programme. Set it in `kz_
 
 ### Fair-play settings
 
-The module enforces standard KZ server cvars (gravity, airaccel, ticrate, etc.) and pushes expected client cvars on join (fps, side speed, vsync, …). Your server should already use normal KZ physics; plugins that change those values may conflict.
+The module enforces **community-approved demo settings** — the same server and client cvars used for global demo submission. On join it pushes expected client values; server cvars are locked via ReHLDS hooks and reverted if changed. Plugins that override these values will conflict with enforcement.
+
+#### Server cvars (enforced)
+
+| Cvar | Value |
+|------|-------|
+| `edgefriction` | `2` |
+| `sv_gravity` | `800` |
+| `sv_stopspeed` | `75` |
+| `sv_maxspeed` | `320` |
+| `sv_accelerate` | `5` |
+| `sv_airaccelerate` | `10` |
+| `sv_wateraccelerate` | `10` |
+| `sv_friction` | `4` |
+| `sv_waterfriction` | `1` |
+| `sv_stepsize` | `18` |
+| `sv_maxvelocity` | `2000` |
+| `sv_cheats` | `0` |
+| `mp_footsteps` | `1` |
+
+#### Client cvars (pushed on join, checked periodically)
+
+| Cvar | Value |
+|------|-------|
+| `cl_lw` | `1` |
+| `cl_sidespeed` | `400` |
+| `cl_backspeed` | `400` |
+| `cl_forwardspeed` | `400` |
+| `cl_movespeedkey` | `0.52` |
+| `fps_max` | `99.5` |
+| `fps_override` | `0` |
+| `gl_vsync` | `0` |
+| `developer` | `0` |
+
+`developer` is not part of the demo submission rules but is enforced to prevent debug tooling on global servers.
+
+#### cs16kz-only server cvars (not in demo rules)
+
+These are additional hosting standards enforced by the module. They do not appear in demo submission configs but are required on Kreedz global API servers:
+
+| Cvar | Value | Purpose |
+|------|-------|---------|
+| `sys_ticrate` | `128` | Stable server tick rate for replay capture and physics |
+| `sv_maxrate` | `100000` | Upper bandwidth cap per client |
+| `sv_minrate` | `0` | Allow low-rate clients without forced minimum |
+| `sv_maxupdaterate` | `102` | Upper update rate cap |
+| `sv_minupdaterate` | `10` | Lower update rate floor |
+
+Do not change these in `server.cfg` expecting them to stick — the module resets them to the values above.
 
 ---
 
