@@ -15,6 +15,12 @@
 
 ---
 
+## Server integration
+
+If you run a KZ server and want to join the global API (records, replays, SR bot, bans), see **[docs/server-integration.md](docs/server-integration.md)** — setup for new and existing servers, config, KZ plugin hooks, and troubleshooting.
+
+---
+
 ## Requirements
 
 ### To build
