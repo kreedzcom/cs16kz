@@ -787,8 +787,10 @@ static void kz_rp_writer_thread(void)
 
                         char uid_str[64];
                         char ts_str[16];
+                        uint32_t uid_gochecks = (s_gochecks[id] > 999999u) ? 999999u : s_gochecks[id];
+
                         to_base36(kz_rp_timestamp_from_header(s_fd[id]), ts_str, sizeof(ts_str));
-                        snprintf(uid_str, sizeof(uid_str), "%06u_%08u_%s_%s", static_cast<uint32_t>(s_gochecks[id]), static_cast<uint32_t>(sig->time * 1000.0f), sig->steamid_short, ts_str);
+                        snprintf(uid_str, sizeof(uid_str), "%06u_%08u_%s_%s", uid_gochecks, static_cast<uint32_t>(sig->time * 1000.0f), sig->steamid_short, ts_str);
 
                         std::filesystem::path npath = g_data_dir / "kz_global" / "replays" / uid_str;
                         npath.replace_extension(".krpr");
