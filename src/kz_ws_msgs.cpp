@@ -258,7 +258,8 @@ void kz_ws_event_map_change(void)
     std::string message;
     int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
-    json_object_set_string(data_obj, "map_name", g_header.map.name);
+    krp_header header = kz_rp_get_header();
+    json_object_set_string(data_obj, "map_name", header.map.name);
 
     kz_ws_build_msg(WSMsgOut::MAP_CHANGE, data_val, message, msg_id);
 

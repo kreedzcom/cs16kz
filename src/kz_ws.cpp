@@ -21,9 +21,11 @@ static void kz_ws_build_hello(std::string& out)
     JSON_Value* data_val = json_value_init_object();
     JSON_Object* data_obj = json_value_get_object(data_val);
 
+    krp_header header = kz_rp_get_header(); // runs on the WS thread
+
     json_object_set_string(data_obj, "plugin_version", MODULE_VERSION);
     json_object_set_string(data_obj, "plugin_checksum", MODULE_CHECKSUM);
-    json_object_set_string(data_obj, "map_name", g_header.map.name);
+    json_object_set_string(data_obj, "map_name", header.map.name);
 
     kz_ws_build_msg(WSMsgOut::HELLO, data_val, out, 0);
 }

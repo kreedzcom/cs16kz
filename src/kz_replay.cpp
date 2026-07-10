@@ -20,7 +20,8 @@
     #include <arpa/inet.h>
 #endif 
 
-krp_header g_header;
+static krp_header g_header; // guarded by g_header_mtx; use kz_rp_get_header()
+static std::mutex g_header_mtx;
 krp_packet g_current_frame[33];
 std::atomic<bool> g_krp_running;
 
@@ -176,6 +177,11 @@ void kz_rp_init(void)
     g_replay_writer_thread = std::thread(kz_rp_writer_thread);
     g_replay_upload_thread = std::thread(kz_rp_upload_thread);
 }
+krp_header kz_rp_get_header(void)
+{
+    std::lock_guard<std::mutex> lock(g_header_mtx);
+    return g_header;
+}
 void kz_rp_update_header(void)
 {
     char szIP[16];
@@ -189,15 +195,20 @@ void kz_rp_update_header(void)
         snprintf(szPort, sizeof(szPort), "%s", CVAR_GET_STRING("port"));
     }
 
-    g_header.magic          = KRP_MAGIC;
-    g_header.version        = KRP_CURRENT_VERSION;
-    g_header.server_ip      = inet_addr(szIP);
-    g_header.server_port    = static_cast<uint16_t>(atoi(szPort));
+    const uint32_t map_crc = get_map_crc32(STRING(gpGlobals->mapname));
+    {
+        std::lock_guard<std::mutex> lock(g_header_mtx);
 
-    g_header.map.checksum = get_map_crc32(STRING(gpGlobals->mapname));
-    snprintf(g_header.map.name, sizeof(g_header.map.name), "%s", STRING(gpGlobals->mapname));
+        g_header.magic          = KRP_MAGIC;
+        g_header.version        = KRP_CURRENT_VERSION;
+        g_header.server_ip      = inet_addr(szIP);
+        g_header.server_port    = static_cast<uint16_t>(atoi(szPort));
 
-    std::filesystem::path dir = g_data_dir / "kz_global" / "replays" / g_header.map.name;
+        g_header.map.checksum = map_crc;
+        snprintf(g_header.map.name, sizeof(g_header.map.name), "%s", STRING(gpGlobals->mapname));
+    }
+
+    std::filesystem::path dir = g_data_dir / "kz_global" / "replays" / STRING(gpGlobals->mapname);
     if (!std::filesystem::exists(dir))
     {
         std::error_code ec;
@@ -641,10 +652,9 @@ static void kz_rp_writer_thread(void)
                         kz_log(&g_replay_writer_log, "[KRP] run_start: closing active file descriptor for player (%d)", id);
                     }
 
-                    // TODO: g_header race
                     krp_signal* sig     = reinterpret_cast<krp_signal*>(s_curr->data);
-                    krp_header header   = g_header;
-                    const char* mapname = g_header.map.name;
+                    krp_header header   = kz_rp_get_header();
+                    const char* mapname = header.map.name;
 
                     header.timestamp = sig->ts;
 
@@ -727,7 +737,8 @@ static void kz_rp_writer_thread(void)
                 case KRP_SIGNAL_UNPAUSE:
                 {
                     krp_signal* sig     = reinterpret_cast<krp_signal*>(s_curr->data);
-                    const char* mapname = g_header.map.name;
+                    krp_header header   = kz_rp_get_header();
+                    const char* mapname = header.map.name;
 
                     std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / sig->steamid_short;
                     snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.string().c_str());
