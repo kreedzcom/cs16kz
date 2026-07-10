@@ -334,6 +334,113 @@ void kz_storage_delete_by_value(const std::string& value, StorageTable table)
         kz_log(&g_storage_log, "[Storage] delete_by_value: %s", e.what());
     }
 }
+static const char* kz_storage_table_name(StorageTable table)
+{
+    switch (table)
+    {
+        case StorageTable::outgoing_queue: return "outgoing_queue";
+        case StorageTable::upload_queue:   return "upload_queue";
+    }
+    return "?";
+}
+int64_t kz_storage_count(StorageTable table)
+{
+    if (!kz_storage_database)
+    {
+        return -1;
+    }
+    try
+    {
+        char statement[64];
+        snprintf(statement, sizeof(statement), "SELECT COUNT(*) FROM %s", kz_storage_table_name(table));
+
+        SQLite::Statement query(*kz_storage_database, statement);
+        if (query.executeStep())
+        {
+            return query.getColumn(0).getInt64();
+        }
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] count: %s", e.what());
+    }
+    return -1;
+}
+void kz_storage_print(StorageTable table, int limit, bool from_end)
+{
+    if (!kz_storage_database)
+    {
+        MF_PrintSrvConsole("[Storage] Database unavailable.\n\n");
+        return;
+    }
+    try
+    {
+        const char* payload = (table == StorageTable::outgoing_queue) ? "msg" : "local_uid";
+
+        char statement[128];
+        snprintf(statement, sizeof(statement), "SELECT id, msg_type, created_at, %s FROM %s ORDER BY id %s LIMIT ?", payload, kz_storage_table_name(table), from_end ? "DESC" : "ASC");
+
+        SQLite::Statement query(*kz_storage_database, statement);
+        query.bind(1, limit);
+
+        MF_PrintSrvConsole("%-8s %-6s %-12s %s\n", "id", "type", "created_at", payload);
+        while (query.executeStep())
+        {
+            char excerpt[101]; // keep console lines readable
+            snprintf(excerpt, sizeof(excerpt), "%s", query.getColumn(3).getText());
+
+            MF_PrintSrvConsole("%-8lld %-6lld %-12lld %s\n",
+                static_cast<long long>(query.getColumn(0).getInt64()),
+                static_cast<long long>(query.getColumn(1).getInt64()),
+                static_cast<long long>(query.getColumn(2).getInt64()),
+                excerpt);
+        }
+        MF_PrintSrvConsole("\n");
+    }
+    catch (const std::exception& e)
+    {
+        MF_PrintSrvConsole("[Storage] list failed: %s\n\n", e.what());
+    }
+}
+void kz_storage_delete_all(StorageTable table)
+{
+    {
+        std::lock_guard<std::mutex> lock(g_retry_mtx);
+        g_retry_queue.erase(std::remove_if(g_retry_queue.begin(), g_retry_queue.end(),
+                [table](const retry_msg& r) { return r.table == table; }), g_retry_queue.end());
+    }
+    if (!kz_storage_database)
+    {
+        return;
+    }
+    try
+    {
+        char statement[64];
+        snprintf(statement, sizeof(statement), "DELETE FROM %s", kz_storage_table_name(table));
+        kz_storage_database->exec(statement);
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] delete_all: %s", e.what());
+    }
+}
+bool kz_storage_checkpoint(void)
+{
+    if (!kz_storage_database)
+    {
+        return false;
+    }
+    try
+    {
+        kz_storage_database->exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] checkpoint: %s", e.what());
+        return false;
+    }
+}
 void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table)
 {
     if(ids.empty())

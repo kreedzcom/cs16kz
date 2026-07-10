@@ -31,6 +31,8 @@ float g_wait_after_load = 0.0f;
 bool kz_init_rehooks(void);
 bool kz_init_detours(void);
 
+void kz_api_cmd(void);
+
 void (*Cvar_DirectSet_Actual)(cvar_t* var, const char* value);
 static CDetour* g_detour_Cvar_DirectSet = nullptr;
 
@@ -72,6 +74,8 @@ void FN_AMXX_ATTACH()
     kz_api_bot_prefix  = register_cvar("kz_api_bot_prefix", "[SR]", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_bot_team    = register_cvar("kz_api_bot_team", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_bot_use_cmd = register_cvar("kz_api_bot_use_cmd", "0", FCVAR_EXTDLL | FCVAR_SPONLY);
+
+    REG_SVR_COMMAND("kz_api", kz_api_cmd);
     kz_api_add_natives();
 }
 void FN_AMXX_PLUGINSLOADED()
@@ -426,4 +430,295 @@ bool kz_init_detours(void)
     g_detour_SV_DropClient = CDetourManager::CreateDetour((void*)&DT_SV_DropClient, (void**)&SV_DropClient_Actual, address);
     g_detour_SV_DropClient->EnableDetour();
     return true;
+}
+/***************************************************************************************************************/
+/***************************************************************************************************************/
+static void kz_api_cmd_usage()
+{
+    MF_PrintSrvConsole("Usage:\n");
+    MF_PrintSrvConsole("  kz_api status                                   - websocket, queue and storage overview\n");
+    MF_PrintSrvConsole("  kz_api reconnect                                - force a websocket reconnect\n\n");
+
+    MF_PrintSrvConsole("  kz_api playback reload                          - reload the best replay for the current map\n");
+    MF_PrintSrvConsole("  kz_api playback load <file>                     - load a specific replay (kicks the active one)\n");
+    MF_PrintSrvConsole("  kz_api playback speed <1|2>                     - playback speed of the SR bot\n\n");
+
+    MF_PrintSrvConsole("  kz_api krp compress <file>                      - .krpr -> .krpz\n");
+    MF_PrintSrvConsole("  kz_api krp decompress <file>                    - .krpz -> .krpr\n\n");
+
+    MF_PrintSrvConsole("  kz_api storage list <outgoing|upload> [n]       - first n rows; negative n = last n (default 10)\n");
+    MF_PrintSrvConsole("  kz_api storage requeue <id|all>                 - resend pending message(s) now\n");
+    MF_PrintSrvConsole("  kz_api storage delete <outgoing|upload> <id>\n");
+    MF_PrintSrvConsole("  kz_api storage clear <outgoing|upload> confirm\n");
+    MF_PrintSrvConsole("  kz_api storage checkpoint                       - force a WAL checkpoint (truncate)\n\n");
+}
+void kz_api_cmd(void)
+{
+    const int argc = CMD_ARGC();
+    if (argc < 2)
+    {
+        kz_api_cmd_usage();
+        return;
+    }
+
+    const char* domain = CMD_ARGV(1);
+    if (FStrEq(domain, "status"))
+    {
+        size_t retry_size = 0;
+        size_t active_uploads_size = 0;
+
+        uintmax_t db_size = 0;
+        uintmax_t wal_size = 0;
+
+        {
+            std::lock_guard<std::mutex> lock(g_retry_mtx);
+            retry_size = g_retry_queue.size();
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
+            active_uploads_size = g_active_uploads.size();
+        }
+        {
+            std::error_code ec;
+            std::filesystem::path db_path  = g_data_dir / "kz_global" / "sqlite3" / "storage.sq3";
+            std::filesystem::path wal_path = db_path;
+            wal_path += "-wal";
+
+            db_size = std::filesystem::file_size(db_path, ec);
+            if (ec)
+            {
+                db_size = 0;
+                ec.clear();
+            }
+            wal_size = std::filesystem::file_size(wal_path, ec);
+            if (ec)
+            {
+                wal_size = 0;
+            }
+        }
+
+        MF_PrintSrvConsole("[%s] websocket:      %s\n", MODULE_LOGTAG, ws_state_name(g_websocket_state.load()));
+        MF_PrintSrvConsole("[%s] writer queue:   %zu/%zu\n", MODULE_LOGTAG, g_replay_writer_queue.size(), g_replay_writer_queue.capacity());
+        MF_PrintSrvConsole("[%s] upload queue:   %zu/%zu\n", MODULE_LOGTAG, g_replay_upload_queue.size(), g_replay_upload_queue.capacity());
+        MF_PrintSrvConsole("[%s] incoming queue: %zu/%zu\n", MODULE_LOGTAG, g_incoming_queue.size(), g_incoming_queue.capacity());
+        MF_PrintSrvConsole("[%s] outgoing queue: %zu/%zu\n", MODULE_LOGTAG, g_outgoing_queue.size(), g_outgoing_queue.capacity());
+        MF_PrintSrvConsole("[%s] retry queue:    %zu\n", MODULE_LOGTAG, retry_size);
+        MF_PrintSrvConsole("[%s] active uploads: %zu\n", MODULE_LOGTAG, active_uploads_size);
+        MF_PrintSrvConsole("[%s] storage rows:   outgoing=%lld upload=%lld\n", MODULE_LOGTAG, static_cast<long long>(kz_storage_count(StorageTable::outgoing_queue)),static_cast<long long>(kz_storage_count(StorageTable::upload_queue)));
+        MF_PrintSrvConsole("[%s] db size:        %s (wal: %s)\n\n", MODULE_LOGTAG, format_bytes(db_size).c_str(), format_bytes(wal_size).c_str());
+        return;
+    }
+    else if (FStrEq(domain, "reconnect"))
+    {
+        if (!kz_api_url->string || !kz_api_url->string[0] || !kz_api_token->string || !kz_api_token->string[0])
+        {
+            MF_PrintSrvConsole("[%s] Configure kz_api_url / kz_api_token first.\n\n", MODULE_LOGTAG);
+            return;
+        }
+        if (g_websocket_state.load() > WSState::Uninitialized)
+        {
+            kz_ws_stop();
+        }
+
+        MF_PrintSrvConsole("[%s] Manual reconnect invoked...\n\n", MODULE_LOGTAG);
+        kz_ws_start(kz_api_url->string, kz_api_token->string);
+        return;
+    }
+    else if (FStrEq(domain, "playback"))
+    {
+        if (argc < 3)
+        {
+            kz_api_cmd_usage();
+            return;
+        }
+
+        const char* action = CMD_ARGV(2);
+        if (FStrEq(action, "reload"))
+        {
+            std::filesystem::path file = kz_pb_find_fastest(STRING(gpGlobals->mapname));
+            if (file.empty())
+            {
+                MF_PrintSrvConsole("[%s] No replays found for the current map.\n\n", MODULE_LOGTAG);
+                return;
+            }
+            kz_pb_parse_file_async(file);
+            MF_PrintSrvConsole("[%s] Queued replay for playback: %s\n\n", MODULE_LOGTAG, file.filename().string().c_str());
+        }
+        else if (FStrEq(action, "load") && argc >= 4)
+        {
+            std::filesystem::path file = g_data_dir / "kz_global" / "replays" / CMD_ARGV(3);
+            if (file.extension() != ".krpz")
+            {
+                MF_PrintSrvConsole("[%s] \"playback load\" expects a .krpz file \n\n", MODULE_LOGTAG);
+                return;
+            }
+
+            std::error_code ec;
+            if (!std::filesystem::is_regular_file(file, ec))
+            {
+                MF_PrintSrvConsole("[%s] File not found: %s\n\n", MODULE_LOGTAG, CMD_ARGV(3));
+                return;
+            }
+            kz_pb_parse_file_async(file);
+            MF_PrintSrvConsole("[%s] Queued replay for playback: %s\n\n", MODULE_LOGTAG, file.filename().string().c_str());
+        }
+        else if (FStrEq(action, "speed") && argc >= 4)
+        {
+            if (!g_pb_bot_data)
+            {
+                MF_PrintSrvConsole("[%s] No active playback.\n\n", MODULE_LOGTAG);
+                return;
+            }
+
+            g_pb_bot_data->double_speed = FStrEq(CMD_ARGV(3), "2");
+            MF_PrintSrvConsole("[%s] Bot playback speed: %s\n\n", MODULE_LOGTAG, g_pb_bot_data->double_speed ? "2x":"1x");
+        }
+        else
+        {
+            kz_api_cmd_usage();
+            return;
+        }
+        return;
+    }
+    else if (FStrEq(domain, "krp"))
+    {
+        if (argc < 4)
+        {
+            kz_api_cmd_usage();
+            return;
+        }
+
+        const char* action = CMD_ARGV(2);
+        if (!FStrEq(action, "compress") && !FStrEq(action, "decompress"))
+        {
+            kz_api_cmd_usage();
+            return;
+        }
+
+        const bool compress = FStrEq(action, "compress");
+        const char* want_ext = compress ? ".krpr" : ".krpz";
+        std::filesystem::path file = g_data_dir / "kz_global" / "replays" / CMD_ARGV(3);
+
+        if (file.extension() != want_ext)
+        {
+            MF_PrintSrvConsole("[%s] %s expects a %s file.\n\n", MODULE_LOGTAG, action, want_ext);
+            return;
+        }
+
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(file, ec))
+        {
+            MF_PrintSrvConsole("[%s] File not found: %s\n\n", MODULE_LOGTAG, CMD_ARGV(3));
+            return;
+        }
+
+        const bool ok = compress ? kz_rp_compress_replay(file) : kz_rp_decompress_replay(file);
+        std::filesystem::path out_path(file);
+        out_path.replace_extension(compress ? ".krpz" : ".krpr");
+
+        if (ok)
+        {
+            uintmax_t in_size = std::filesystem::file_size(file, ec);
+            if (ec)
+            {
+                in_size = 0;
+                ec.clear();
+            }
+
+            uintmax_t out_size = std::filesystem::file_size(out_path, ec);
+            if (ec)
+            {
+                out_size = 0;
+            }
+            MF_PrintSrvConsole("[%s] %s -> %s (%s -> %s)\n\n", MODULE_LOGTAG, file.filename().string().c_str(), out_path.filename().string().c_str(), format_bytes(in_size).c_str(), format_bytes(out_size).c_str());
+        }
+        else
+        {
+            MF_PrintSrvConsole("[%s] Failed to %s %s (corrupt or unreadable file).\n\n", MODULE_LOGTAG, action, CMD_ARGV(3));
+        }
+        return;
+    }
+    else if (FStrEq(domain, "storage"))
+    {
+        if (argc < 3)
+        {
+            kz_api_cmd_usage();
+            return;
+        }
+
+        const char* action = CMD_ARGV(2);
+        StorageTable table = StorageTable::outgoing_queue;
+        const bool has_table = (argc >= 4) && (FStrEq(CMD_ARGV(3), "outgoing") || FStrEq(CMD_ARGV(3), "upload"));
+        if (has_table && FStrEq(CMD_ARGV(3), "upload"))
+        {
+            table = StorageTable::upload_queue;
+        }
+
+        if (FStrEq(action, "list") && has_table)
+        {
+            int limit = (argc >= 5) ? atoi(CMD_ARGV(4)) : 10;
+            const bool from_end = (limit < 0); // negative n = last n rows (newest first)
+            if (from_end)
+            {
+                limit = -limit;
+            }
+            if (limit == 0)
+            {
+                limit = 10;
+            }
+            kz_storage_print(table, limit, from_end);
+        }
+        else if (FStrEq(action, "requeue") && argc >= 4)
+        {
+            const char* arg  = CMD_ARGV(3);
+            const bool all   = FStrEq(arg, "all");
+            const int64_t id = all ? 0 : static_cast<int64_t>(atoll(arg));
+
+            int requeued = 0;
+            {
+                std::lock_guard<std::mutex> lock(g_retry_mtx);
+                for (auto& r : g_retry_queue)
+                {
+                    if (all || r.msg_id == id)
+                    {
+                        r.timestamp   = 0; // due immediately on the next retry pass
+                        r.retry_count = 0;
+                        requeued++;
+                    }
+                }
+            }
+            MF_PrintSrvConsole("[%s] Requeued %d message(s) for immediate retry.\n\n", MODULE_LOGTAG, requeued);
+        }
+        else if (FStrEq(action, "delete") && has_table && argc >= 5)
+        {
+            int64_t id = static_cast<int64_t>(atoll(CMD_ARGV(4)));
+            kz_storage_delete(id, table);
+            MF_PrintSrvConsole("[%s] Deleted id %lld from %s (if it existed).\n\n", MODULE_LOGTAG, static_cast<long long>(id), CMD_ARGV(3));
+        }
+        else if (FStrEq(action, "clear") && has_table)
+        {
+            if (argc < 5 || !FStrEq(CMD_ARGV(4), "confirm"))
+            {
+                MF_PrintSrvConsole("[%s] This purges the whole table. Repeat with: kz_api storage clear %s confirm\n\n", MODULE_LOGTAG, CMD_ARGV(3));
+                return;
+            }
+            kz_storage_delete_all(table);
+            MF_PrintSrvConsole("[%s] Cleared %s (rows + pending retries).\n\n", MODULE_LOGTAG, CMD_ARGV(3));
+        }
+        else if (FStrEq(action, "checkpoint"))
+        {
+            MF_PrintSrvConsole(kz_storage_checkpoint()
+                ? "[%s] WAL checkpoint done.\n\n"
+                : "[%s] WAL checkpoint failed (see log).\n\n", MODULE_LOGTAG);
+        }
+        else
+        {
+            kz_api_cmd_usage();
+        }
+        return;
+    }
+    else
+    {
+        kz_api_cmd_usage();
+    }
 }

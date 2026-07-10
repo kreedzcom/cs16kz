@@ -61,6 +61,19 @@ const unsigned int kCRCTable[256] = {
 	0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
 
+const char* ws_state_name(WSState state)
+{
+    switch (state)
+    {
+        case WSState::Uninitialized:                return "uninitialized";
+        case WSState::Initialized:                  return "initialized (connecting)";
+        case WSState::Connected:                    return "connected";
+        case WSState::Disconnected:                 return "disconnected";
+        case WSState::DisconnectedButWorthRetrying: return "disconnected (retrying)";
+        default:                                    return "?";
+    }
+}
+
 void fm_set_user_team(edict_t* ed, int team)
 {
     const char* team_names[] = {"", "TERRORIST", "CT", "SPECTATOR" };

@@ -35,4 +35,8 @@ extern void kz_storage_delete_by_value(const std::string& value, StorageTable ta
 extern void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table);
 /** Returns false if [msg_id] is not in outgoing_queue or storage is unavailable. */
 extern bool kz_storage_try_get_outgoing(int64_t msg_id, int64_t* msg_type_out, std::string* msg_out);
+extern int64_t kz_storage_count(StorageTable table);
+extern void kz_storage_print(StorageTable table, int limit, bool from_end);
+extern void kz_storage_delete_all(StorageTable table);
+extern bool kz_storage_checkpoint(void);
 #endif

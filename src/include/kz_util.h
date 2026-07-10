@@ -24,5 +24,5 @@ extern size_t remove_substring(char* text, const char* what);
 extern void split_net_address(const char* addr, char* ip, size_t ip_maxlen, char* port, size_t port_maxlen);
 extern edict_t* find_player_by_authid(const char* authid);
 extern cvar_t* register_cvar(const char* name, const char* value, int flags);
-
+extern const char* ws_state_name(WSState state);
 #endif

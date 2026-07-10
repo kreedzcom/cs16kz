@@ -82,6 +82,9 @@ typedef struct
 extern krp_header kz_rp_get_header(void);
 extern krp_playback* g_pb_bot_data;
 
+extern kz::queue<krp_packet>   g_replay_writer_queue;
+extern kz::queue<ws_upload>    g_replay_upload_queue;
+
 extern int kz_rp_run_started(int id);
 extern int kz_rp_run_checkpoint(int id);
 extern int kz_rp_run_gocheck(int id);
@@ -98,6 +101,9 @@ extern void kz_rp_set_cmd(int id, const usercmd_t* cmd);
 extern void kz_rp_set_vars(int id, const entvars_t* vars);
 extern void kz_rp_compress_and_upload_async(ws_upload upr);
 extern void kz_rp_write_frame(int id);
+
+extern bool kz_rp_compress_replay(const std::filesystem::path& file);
+extern bool kz_rp_decompress_replay(const std::filesystem::path& file);
 
 extern void kz_pb_init(void);
 extern void kz_pb_uninit(void);
