@@ -25,6 +25,14 @@ void kz_ac_frame()
     const float current_time    = gpGlobals->time;
     const float delta_time      = current_time - last_time;
 
+    if (delta_time < 0.0f)
+    {
+        last_time = current_time;
+        memset(g_last_query_time, 0, sizeof(g_last_query_time));
+        memset(g_total_frames, 0, sizeof(g_total_frames));
+        return;
+    }
+
     // for my own sanity keep it seperated (> || ==) or i will find you
     const bool ac_tick          = (delta_time > 1.0f || delta_time == 1.0f);
 
