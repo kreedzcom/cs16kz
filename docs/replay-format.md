@@ -27,7 +27,7 @@ Both `.krpr` and `.krpz` begin with a fixed **256-byte** header (189 bytes of fi
 | 48 | `player.steamid` | `char[35]` | 35 | `STEAM_X:Y:Z` |
 | 83 | `map.name` | `char[64]` | 64 | Map name |
 | 147 | `map.checksum` | `uint32` | 4 | CRC32 of the map (BSP) |
-| 151 | `run.checkpoints` | `uint32` | 4 | Checkpoint count (patched into the header on pause) |
+| 151 | `run.checkpoints` | `uint32` | 4 | Checkpoint count (patched into the header on pause and finish) |
 | 155 | `run.teleports` | `uint32` | 4 | Gocheck/teleport count |
 | 159 | `timestamp` | `uint64` | 8 | Run start, ms since Unix epoch |
 | 167 | `server_ip` | `uint32` | 4 | `inet_addr` form |
@@ -109,17 +109,17 @@ The first frame after a run start or an unpause is written as a **keyframe**; al
 
 ### Run lifecycle signals
 
-Live capture is driven by signals pushed onto the writer queue (`KRP_SIGNAL_*`): `START`, `FRAME`, `EVENT`, `PAUSE`, `UNPAUSE`, `REJECT`, `FINISH`. These control the writer thread but are **not** all serialized verbatim — only frame-type records (event/delta/keyframe) end up in the byte stream. Start opens the file and writes the header; pause flushes checkpoint/teleport counts into the header and closes the file; unpause reopens and appends (next frame is a keyframe); reject closes and optionally deletes; finish patches the nickname (only) into the header, closes, and renames the file to its final name.
+Live capture is driven by signals pushed onto the writer queue (`KRP_SIGNAL_*`): `START`, `FRAME`, `EVENT`, `PAUSE`, `UNPAUSE`, `REJECT`, `FINISH`. These control the writer thread but are **not** all serialized verbatim — only frame-type records (event/delta/keyframe) end up in the byte stream. Start opens the file and writes the header; pause flushes checkpoint/teleport counts into the header and closes the file; unpause reopens and appends (next frame is a keyframe); reject closes and optionally deletes; finish patches the nickname and the checkpoint/teleport counts into the header, closes, and renames the file to its final name.
 
 ### Final filename
 
 On finish the file is renamed to:
 
 ```
-<time_ms:08>_<steamid_short>_<timestamp_base36>.krpr
+<gochecks:06>_<time_ms:08>_<steamid_short>_<timestamp_base36>.krpr
 ```
 
-where `time_ms` is the run time in milliseconds (zero-padded to 8 digits), `steamid_short` is the compact SteamID, and `timestamp_base36` is the start timestamp in base-36. Zero-padding the time first makes lexicographic sort equal to fastest-first — which is how playback picks the map's SR replay.
+where `gochecks` is the teleport count (zero-padded to 6 digits), `time_ms` is the run time in milliseconds (zero-padded to 8 digits), `steamid_short` is the compact SteamID, and `timestamp_base36` is the start timestamp in base-36. Zero-padding gochecks first and time second makes lexicographic sort equal to fewest-gochecks-then-fastest — which is how playback picks the map's SR replay (a 0-gocheck pro run always outranks a faster run with teleports).
 
 ---
 
@@ -169,7 +169,7 @@ Compression runs on the upload thread; if a queued file is already `.krpz` it is
 
 The parser keeps only a reduced per-frame struct for the SR bot, `krp_playback_frame`: `origin` (`v3f`), `v_angle` (`v3f`), `flags`, `button`, `oldbuttons`. Everything else in `krp_frame` is decoded but discarded. The bot interpolates position between consecutive frames, derives velocity, and picks animation gaitsequences from the flags/buttons.
 
-The run time and the `MM:SS.cc` timer string are parsed from the **filename** (the leading 8-digit millisecond field), not from the frame data.
+The run time and the `MM:SS.cc` timer string are parsed from the **filename** (the 8-digit millisecond field after the 6-digit gochecks prefix, i.e. bytes 7–14), not from the frame data.
 
 ---
 
