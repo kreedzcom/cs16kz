@@ -69,7 +69,7 @@ int kz_rp_run_checkpoint(int id)
     item.type = KRP_SIGNAL_EVENT;
 
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
-    sig->event = KRP_EVENT_TYPE_CHECKPOINT;
+    sig->event = KRP_EVENT_CHECKPOINT;
 
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
@@ -86,7 +86,7 @@ int kz_rp_run_gocheck(int id)
     item.type = KRP_SIGNAL_EVENT;
 
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
-    sig->event = KRP_EVENT_TYPE_GOCHECK;
+    sig->event = KRP_EVENT_GOCHECK;
 
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
@@ -189,8 +189,8 @@ void kz_rp_update_header(void)
         snprintf(szPort, sizeof(szPort), "%s", CVAR_GET_STRING("port"));
     }
 
-    g_header.magic          = 0x4B52502146494C45;
-    g_header.version        = 0;
+    g_header.magic          = KRP_MAGIC;
+    g_header.version        = KRP_CURRENT_VERSION;
     g_header.server_ip      = inet_addr(szIP);
     g_header.server_port    = static_cast<uint16_t>(atoi(szPort));
 
@@ -413,24 +413,12 @@ static void kz_rp_run_from_header(FILE *fp, uint32_t *checkpoints, uint32_t *tel
 static void kz_rp_write_frametype(FILE* fp, krp_packet* curr, uint8_t frametype)
 {
     fwrite(&frametype, sizeof(frametype), 1, fp);
-    
-    krp_mask mask = {};
-    switch (frametype)
+
+    if (frametype == KRP_FRAMETYPE_KEYFRAME)
     {
-        case BIT_FRAMETYPE_EVENT:
-        {
-            fwrite(&mask, sizeof(mask), 1, fp);
-            break;
-        }
-        case BIT_FRAMETYPE_DELTA:
-        {
-            break;
-        }
-        case BIT_FRAMETYPE_KEYFRAME:
-        {
-            memset(&mask, 0xFF, sizeof(mask));
-            fwrite(&mask, sizeof(mask), 1, fp);
-        }
+        krp_mask mask = {};
+        memset(&mask, 0xFF, sizeof(mask));
+        fwrite(&mask, sizeof(mask), 1, fp);
     }
 }
 static void kz_rp_write_event(FILE* fp, krp_packet* curr)
@@ -483,6 +471,7 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
 {
     std::vector<uint8_t> frame_type;
     std::vector<uint8_t> frame_data[sizeof(krp_frame)];
+    std::vector<uint8_t> frame_events;
 
     const size_t num_blocks = sizeof(krp_mask) / sizeof(uint64_t);
     std::vector<uint8_t> frame_flags[num_blocks];
@@ -495,19 +484,20 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
         uint8_t type = *ptr++;
         frame_type.push_back(type);
 
-        krp_mask mask;
-        memcpy(&mask, ptr, sizeof(krp_mask)); ptr += sizeof(krp_mask);
+        if (type == KRP_FRAMETYPE_DELTA || type == KRP_FRAMETYPE_KEYFRAME)
+        {
+            krp_mask mask;
+            memcpy(&mask, ptr, sizeof(krp_mask)); ptr += sizeof(krp_mask);
 
-        uint8_t* m_ptr = reinterpret_cast<uint8_t*>(&mask);
-        for (size_t block = 0; block < num_blocks; ++block)
-        {
-            for (size_t i = 0; i < 8; ++i)
+            uint8_t* m_ptr = reinterpret_cast<uint8_t*>(&mask);
+            for (size_t block = 0; block < num_blocks; ++block)
             {
-                frame_flags[block].push_back(m_ptr[block * 8 + i]);
+                for (size_t i = 0; i < 8; ++i)
+                {
+                    frame_flags[block].push_back(m_ptr[block * 8 + i]);
+                }
             }
-        }
-        if (type == BIT_FRAMETYPE_DELTA || type == BIT_FRAMETYPE_KEYFRAME)
-        {
+
             size_t byte_idx = 0;
             for (size_t i = 0; i < sizeof(krp_mask) && byte_idx < sizeof(krp_frame); ++i)
             {
@@ -528,17 +518,19 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
                 }
             }
         }
-        else if (type == BIT_FRAMETYPE_EVENT)
+        else if (type == KRP_FRAMETYPE_EVENT)
         {
-            // TODO: BIT_FRAMETYPE_EVENT
+            uint8_t event = *ptr++;
+            frame_events.push_back(event);
         }
     }
 
     krp_header header;
     memcpy(&header, src.data(), sizeof(krp_header));
-    header.size_types = static_cast<uint32_t>(frame_type.size());
-    header.size_flags = 0;
-    header.size_data  = 0;
+    header.size_types  = static_cast<uint32_t>(frame_type.size());
+    header.size_flags  = 0;
+    header.size_data   = 0;
+    header.size_events = static_cast<uint32_t>(frame_events.size());
 
     for (size_t i = 0; i < num_blocks; ++i)
     {
@@ -552,7 +544,7 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
     std::vector<uint8_t> result;
     result.reserve(src.size());
 
-    // Result: [header][frametype_1][frametype_N]...[flags_1][flags_N]...[data_1][data_N]
+    // Result: [header][frametypes][masks][data][events]
     uint8_t* h_ptr = reinterpret_cast<uint8_t*>(&header);
     result.insert(result.end(), h_ptr, h_ptr + sizeof(header));
     result.insert(result.end(), frame_type.begin(), frame_type.end());
@@ -568,6 +560,7 @@ static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
             result.insert(result.end(), frame_data[i].begin(), frame_data[i].end());
         }
     }
+    result.insert(result.end(), frame_events.begin(), frame_events.end());
     return result;
 }
 static FILE* kz_rp_compress_file(const char* file)
@@ -679,15 +672,19 @@ static void kz_rp_writer_thread(void)
                 {
                     if (s_fd[id])
                     {
-                        kz_rp_write_frametype(s_fd[id], s_curr, BIT_FRAMETYPE_EVENT);
+                        kz_rp_write_frametype(s_fd[id], s_curr, KRP_FRAMETYPE_EVENT);
                         kz_rp_write_event(s_fd[id], s_curr);
                     }
                     {
                         krp_signal* sig = reinterpret_cast<krp_signal*>(s_curr->data);
-                        if (sig->event == KRP_EVENT_TYPE_CHECKPOINT)
+                        if (sig->event == KRP_EVENT_CHECKPOINT)
+                        {
                             s_checkpoints[id]++;
-                        else if (sig->event == KRP_EVENT_TYPE_GOCHECK)
+                        }
+                        else if (sig->event == KRP_EVENT_GOCHECK)
+                        {
                             s_gochecks[id]++;
+                        }
                     }
                     break;
                 }
@@ -699,12 +696,12 @@ static void kz_rp_writer_thread(void)
                         if (!s_counter[id])
                         {
                             // We write a full frame (no delta) when the run just started or got unpaused (savepos)
-                            kz_rp_write_frametype(s_fd[id], s_curr, BIT_FRAMETYPE_KEYFRAME);
+                            kz_rp_write_frametype(s_fd[id], s_curr, KRP_FRAMETYPE_KEYFRAME);
                             kz_rp_write_keyframe(s_fd[id], s_curr);
                         }
                         else
                         {
-                            kz_rp_write_frametype(s_fd[id], s_curr, BIT_FRAMETYPE_DELTA);
+                            kz_rp_write_frametype(s_fd[id], s_curr, KRP_FRAMETYPE_DELTA);
                             kz_rp_write_delta(s_fd[id], s_curr, &s_last[id]);
                         }
                         memcpy(&s_last[id], s_curr, sizeof(s_last[0]));
@@ -747,7 +744,11 @@ static void kz_rp_writer_thread(void)
                         s_fd[id] = fopen(s_filepath[id], "rb+");
                         s_counter[id] = 0;
 
-                        kz_rp_run_from_header(s_fd[id], &s_checkpoints[id], &s_gochecks[id]);
+                        if (s_fd[id])
+                        {
+                            fseek(s_fd[id], 0, SEEK_END);
+                            kz_rp_run_from_header(s_fd[id], &s_checkpoints[id], &s_gochecks[id]);
+                        }
                     }
                     if (!s_fd[id])
                     {
@@ -787,7 +788,7 @@ static void kz_rp_writer_thread(void)
                         char uid_str[64];
                         char ts_str[16];
                         to_base36(kz_rp_timestamp_from_header(s_fd[id]), ts_str, sizeof(ts_str));
-                        snprintf(uid_str, sizeof(uid_str), "%08u_%s_%s", static_cast<uint32_t>(sig->time * 1000.0f), sig->steamid_short, ts_str);
+                        snprintf(uid_str, sizeof(uid_str), "%06u_%08u_%s_%s", static_cast<uint32_t>(s_gochecks[id]), static_cast<uint32_t>(sig->time * 1000.0f), sig->steamid_short, ts_str);
 
                         std::filesystem::path npath = g_data_dir / "kz_global" / "replays" / uid_str;
                         npath.replace_extension(".krpr");
@@ -801,11 +802,13 @@ static void kz_rp_writer_thread(void)
                             strncpy(temp_header.player.name, sig->nickname, sizeof(temp_header.player.name) - 1);
                             temp_header.player.name[sizeof(temp_header.player.name) - 1] = '\0';
 
+                            temp_header.run.checkpoints = s_checkpoints[id];
+                            temp_header.run.teleports   = s_gochecks[id];
+
                             fseek(s_fd[id], 0, SEEK_SET);
                             fwrite(&temp_header, sizeof(krp_header), 1, s_fd[id]);
                             fflush(s_fd[id]);
                         }
-
 
                         fclose(s_fd[id]);
                         s_fd[id] = nullptr;

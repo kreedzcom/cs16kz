@@ -177,8 +177,8 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                             if (kz_api_log_upload->value > 0.0f)
                             {
                                 kz_log(nullptr, "[UPLOAD] Retry (%d): %s", it->retry_count + 1, std::filesystem::relative(replay, g_data_dir).c_str());
-                                kz_rp_compress_and_upload_async(metadata);
                             }
+                            kz_rp_compress_and_upload_async(metadata);
                         }
                         else
                         {
@@ -289,7 +289,7 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
 
     if (!kz_storage_try_get_outgoing(msg_id, &msg_type, &stored))
     {
-        kz_log(&g_ws_log, "[kz_ws_ack_error] Failed to find msg_id (%d) in storage", msg_id);
+        kz_log(&g_ws_log, "[kz_ws_ack_error] Failed to find msg_id (%lld) in storage", static_cast<long long>(msg_id));
         return nullptr;
     }
 
@@ -478,7 +478,9 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
         }
 
         kz_storage_save(shared_msg, 0, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
-        kz_rp_compress_and_upload_async(metadata);
+        return [metadata]() {
+                kz_rp_compress_and_upload_async(metadata);
+            };
     }
     else
     {

@@ -11,6 +11,7 @@ extern std::string format_bytes(uint64_t bytes);
 
 extern void kz_log_init(std::thread::id t);
 extern void kz_log_addq(kz::queue<log_entry>* queue);
+extern void kz_log_removeq(kz::queue<log_entry>* queue);
 extern void kz_log_flush(uint64_t nano_delay);
 extern void kz_log(kz::queue<log_entry>* queue, const char* fmt, ...);
 

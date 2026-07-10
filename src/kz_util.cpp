@@ -8,8 +8,12 @@
 #include "kz_replay.h"
 #include "kz_storage.h"
 
+#include <algorithm>
+#include <mutex>
+
 std::thread::id g_main_thread;
 std::vector<kz::queue<log_entry>*> g_log_queues;
+static std::mutex g_log_queues_mtx;
 
 const unsigned int kCRCTable[256] = {
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
@@ -131,13 +135,23 @@ void kz_log_init(std::thread::id t)
 }
 void kz_log_addq(kz::queue<log_entry>* queue)
 {
-    g_log_queues.push_back(queue);
+    std::lock_guard<std::mutex> lock(g_log_queues_mtx);
+    if (std::find(g_log_queues.begin(), g_log_queues.end(), queue) == g_log_queues.end())
+    {
+        g_log_queues.push_back(queue);
+    }
+}
+void kz_log_removeq(kz::queue<log_entry>* queue)
+{
+    std::lock_guard<std::mutex> lock(g_log_queues_mtx);
+    g_log_queues.erase(std::remove(g_log_queues.begin(), g_log_queues.end(), queue), g_log_queues.end());
 }
 void kz_log_flush(uint64_t nano_delay)
 {
     auto now = std::chrono::steady_clock::now();
     uint64_t cutoff = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count() - nano_delay;
 
+    std::lock_guard<std::mutex> lock(g_log_queues_mtx);
     while (true)
     {
         log_entry* oldest_entry = nullptr;

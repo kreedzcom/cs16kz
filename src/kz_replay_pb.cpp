@@ -44,6 +44,7 @@ static void kz_bot_footsteps(edict_t* pent);
 
 static void kz_pb_parser_thread(void);
 static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, const std::filesystem::path& file);
+static void parse_playback_v1(krp_playback& out, const krp_header& header, const std::vector<uint8_t>& d_buffer, size_t d_size);
 static void print_header(const krp_header& header);
 static std::string get_timestamp_string(uint64_t ts_ms, bool use_utc);
 std::filesystem::path kz_pb_find_fastest(const char* mapname);
@@ -315,8 +316,8 @@ static void kz_bot_think(edict_t* pent)
     int32_t flags       = g_pb_bot_data->frames[index].flags;
     int32_t button      = g_pb_bot_data->frames[index].button;
     int32_t oldbuttons  = g_pb_bot_data->frames[index].oldbuttons;
-    v3f     origin      = g_pb_bot_data->frames[index].origin;
-    v3f     v_angle     = g_pb_bot_data->frames[index].v_angle;
+    krp_v3f     origin  = g_pb_bot_data->frames[index].origin;
+    krp_v3f     v_angle = g_pb_bot_data->frames[index].v_angle;
             
     bool bGround  = (flags & FL_ONGROUND);
     bool bJump    = (button & IN_JUMP);
@@ -541,7 +542,7 @@ void kz_pb_parser_thread(void)
                             g_pb_parse_queue.pop();
                             continue;
                         }
-                        std::string ms_str = filename.substr(0, 8);
+                        std::string ms_str = filename.substr(7, 8);
                         uint32_t ms_total = 0;
                         try
                         {
@@ -628,165 +629,233 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
         kz_log(&g_pb_parse_log, "[PARSE] File: %s", std::filesystem::relative(file, g_data_dir).c_str());
         kz_log(&g_pb_parse_log, "[PARSE] File size: (compressed: %s, decompressed: %s)", c_bytes.c_str(), d_bytes.c_str());
         kz_log(&g_pb_parse_log, "---------------------------------------------------------");
+    }
+    if (header.magic != KRP_MAGIC)
+    {
+        kz_log(&g_pb_parse_log, "[PARSE] Bad magic -> expected (0x%llX), got (0x%llX)", static_cast<unsigned long long>(KRP_MAGIC), static_cast<unsigned long long>(header.magic));
+        return;
+    }
+    if (kz_api_log_parse->value > 0.0f)
+    {
         print_header(header);
     }
-
-    // Format: [header][Frame types ... stream][Frame mask-flags ... stream][Frame data ... stream]
-    uint8_t* ptr_types       = d_buffer.data() + sizeof(header);
-    uint8_t* ptr_types_end   = ptr_types + header.size_types;
-
-    uint8_t* ptr_flags       = ptr_types_end;
-    uint8_t* ptr_flags_end   = ptr_flags + header.size_flags;
-
-    uint8_t* ptr_data        = ptr_flags_end;
-    uint8_t* ptr_data_end    = ptr_data + header.size_data;
-
-    if (ptr_types_end > d_buffer.data() + d_size)
+    switch(header.version)
     {
-        kz_log(&g_pb_parse_log, "[PARSE] Critical: Header claims size_types %u, but file is too small.", header.size_types);
+        case 1:
+        {
+            parse_playback_v1(out, header, d_buffer, d_size);
+            break;
+        }
+        default:
+        {
+            kz_log(&g_pb_parse_log, "[PARSE] Unknown replay format version: v%llu", static_cast<unsigned long long>(header.version));
+        }
+    }
+}
+static void parse_playback_v1(krp_playback& out, const krp_header& header, const std::vector<uint8_t>& d_buffer, size_t d_size)
+{
+    out.frames.clear();
+
+    if (d_size < sizeof(krp_header))
+    {
+        kz_log(&g_pb_parse_log, "[PARSE] Critical: file (%zu bytes) is smaller than the header (%zu).", d_size, sizeof(krp_header));
         return;
     }
 
-    std::vector<uint8_t> frame_types; 
-    frame_types.reserve(header.size_types);
-
-    while (ptr_types < ptr_types_end)
-    {
-        uint8_t type = *ptr_types++;
-        frame_types.push_back(type);
-    }
-    if (frame_types.empty() || frame_types[0] != BIT_FRAMETYPE_KEYFRAME)
+    /* Sanity: all four sections must fit inside the file. Summed in 64-bit so
+     * hostile u32 sizes can't overflow the check. */
+    const uint64_t total_sections = static_cast<uint64_t>(sizeof(krp_header))
+                                  + header.size_types + header.size_flags
+                                  + header.size_data  + header.size_events;
+    if (total_sections > d_size)
     {
         if (kz_api_log_parse->value > 0.0f)
         {
-            kz_log(&g_pb_parse_log, "[PARSE] Critical: The first frame is not a keyframe");
+            kz_log(&g_pb_parse_log, "[PARSE] Critical: header sections claim %llu bytes, but file is %zu bytes.", static_cast<unsigned long long>(total_sections), d_size);
         }
         return;
     }
 
-    const size_t num_blocks = sizeof(krp_mask) / sizeof(uint64_t);
-    const size_t block_stream_size = header.size_flags / num_blocks;
-    std::vector<uint8_t> frame_flags[num_blocks];
+    const uint8_t* ptr_types = d_buffer.data() + sizeof(krp_header);
+    const uint8_t* ptr_flags = ptr_types + header.size_types;
+    const uint8_t* ptr_data  = ptr_flags + header.size_flags;
+    /* events section follows ptr_data + size_data; unused for playback */
 
-    for (size_t block = 0; block < num_blocks; ++block)
+    const size_t block_stream_size = header.size_flags / KRP_MASK_BLOCKS;
+    const size_t num_frames        = block_stream_size / sizeof(uint64_t);
+
+    /* Sanity: the run must start with a keyframe (delta base). */
+    if (header.size_types == 0 || ptr_types[0] != KRP_FRAMETYPE_KEYFRAME)
     {
-        assert(ptr_flags < ptr_flags_end);
-
-        frame_flags[block].insert(frame_flags[block].end(), ptr_flags, ptr_flags + block_stream_size);
-        ptr_flags += block_stream_size;
+        if (kz_api_log_parse->value > 0.0f)
+        {
+            kz_log(&g_pb_parse_log, "[PARSE] Critical: the first frame is not a keyframe.");
+        }
+        return;
     }
-    
-    const size_t num_frames = block_stream_size / sizeof(uint64_t);
-    uint8_t* data_ptrs[sizeof(krp_frame)] = {nullptr};
+
+    /* Pass 1: validate every frame type, count rows/events, and derive
+     * per-column data sizes from the masks. */
+    size_t rows   = 0;
+    size_t events = 0;
     size_t data_sizes[sizeof(krp_frame)] = {0};
 
-    for (size_t i = 0; i < num_frames; ++i)
+    for (size_t t = 0; t < header.size_types; ++t)
     {
-        uint8_t type = frame_types[i];
-        if (type == BIT_FRAMETYPE_DELTA || type == BIT_FRAMETYPE_KEYFRAME)
-        {
-            for (size_t block = 0; block < num_blocks; ++block)
-            {
-                uint64_t block_val;
-                memcpy(&block_val, &frame_flags[block][i*8], 8);
-                for (size_t bit = 0; bit < 64; ++bit)
-                {
-                    size_t idx = block * 64 + bit;
+        const uint8_t type = ptr_types[t];
 
-                    if (idx < sizeof(krp_frame) && block_val & (1ULL << bit))
-                    {
-                        data_sizes[block * 64 + bit]++;
-                    }
+        if (type == KRP_FRAMETYPE_EVENT)
+        {
+            ++events;
+            continue;
+        }
+        if (type != KRP_FRAMETYPE_DELTA && type != KRP_FRAMETYPE_KEYFRAME)
+        {
+            if (kz_api_log_parse->value > 0.0f)
+            {
+                kz_log(&g_pb_parse_log, "[PARSE] Critical: unknown frame type (%u) at row %zu.", type, t);
+            }
+            return;
+        }
+        if (rows >= num_frames)
+        {
+            if (kz_api_log_parse->value > 0.0f)
+            {
+                kz_log(&g_pb_parse_log, "[PARSE] Critical: more DELTA/KEYFRAME rows than the flags stream contains.");
+            }
+            return;
+        }
+        for (size_t block = 0; block < KRP_MASK_BLOCKS; ++block)
+        {
+            uint64_t block_val;
+            memcpy(&block_val, ptr_flags + (block * block_stream_size) + (rows * 8), 8);
+
+            for (size_t bit = 0; bit < 64; ++bit)
+            {
+                const size_t idx = block * 64 + bit;
+                if (idx < sizeof(krp_frame) && (block_val & (1ULL << bit)))
+                {
+                    ++data_sizes[idx];
                 }
             }
         }
-        else if (type == BIT_FRAMETYPE_EVENT)
-        {
-            // TODO: BIT_FRAMETYPE_EVENT
-        }
+        ++rows;
     }
+
+    /* Sanity: streams must agree with each other and with the header. */
+    if (rows != num_frames)
+    {
+        if (kz_api_log_parse->value > 0.0f)
+        {
+            kz_log(&g_pb_parse_log, "[PARSE] Critical: flags stream holds %zu frames, types stream holds %zu.", num_frames, rows);
+        }
+        return;
+    }
+    if (events != header.size_events)
+    {
+        if (kz_api_log_parse->value > 0.0f)
+        {
+            kz_log(&g_pb_parse_log, "[PARSE] Critical: types stream has %zu events, header claims %u.", events, header.size_events);
+        }
+        return;
+    }
+
+    uint64_t total_data = 0;
     for (size_t i = 0; i < sizeof(krp_frame); ++i)
     {
-        if (data_sizes[i] > 0)
+        total_data += data_sizes[i];
+    }
+    if (total_data != header.size_data)
+    {
+        if (kz_api_log_parse->value > 0.0f)
         {
-            if (ptr_data >= ptr_data_end)
-            {
-                if (kz_api_log_parse->value > 0.0f)
-                {
-                    kz_log(&g_pb_parse_log, "[PARSE] Critical: Column %zu exceeds data buffer bounds!", i);
-                }
-                return;
-            }
-            data_ptrs[i] = ptr_data;
-            ptr_data += data_sizes[i];
+            kz_log(&g_pb_parse_log, "[PARSE] Critical: masks demand %llu data bytes, header claims %u.", static_cast<unsigned long long>(total_data), header.size_data);
         }
-        else 
+        return;
+    }
+
+    /* Column start/end pointers. Column i's stream is exactly data_sizes[i]
+     * bytes; the per-column end stops one corrupt column bleeding into the
+     * next. Total fit was proven above. */
+    const uint8_t* data_ptrs[sizeof(krp_frame)];
+    const uint8_t* data_ends[sizeof(krp_frame)];
+    {
+        const uint8_t* cursor = ptr_data;
+        for (size_t i = 0; i < sizeof(krp_frame); ++i)
         {
-            data_ptrs[i] = nullptr; 
+            data_ptrs[i] = cursor;
+            cursor += data_sizes[i];
+            data_ends[i] = cursor;
         }
     }
 
     out.header = header;
     out.frames.reserve(num_frames);
-    uint8_t last_frame_data[sizeof(krp_frame)] = {0};
 
-    for (size_t i = 0; i < num_frames; ++i)
+    uint8_t last_frame_data[sizeof(krp_frame)] = {0};
+    size_t r = 0;
+
+    /* Pass 2: reconstruct frames (keyframe = copy, delta = XOR against the
+     * previously reconstructed frame). */
+    for (size_t t = 0; t < header.size_types; ++t)
     {
         krp_playback_entry fe;
-        fe.frame_type = frame_types[i];
-        memcpy(fe.data, last_frame_data, sizeof(krp_frame));
+        fe.frame_type = ptr_types[t];
 
-        if (fe.frame_type == BIT_FRAMETYPE_DELTA || fe.frame_type == BIT_FRAMETYPE_KEYFRAME)
+        if (fe.frame_type == KRP_FRAMETYPE_EVENT)
         {
-            for (size_t block = 0; block < num_blocks; ++block)
+            // Nothing to do here, unused for playback - no point in reading it
+            continue;
+        }
+
+        memcpy(fe.data, last_frame_data, sizeof(krp_frame));
+        for (size_t block = 0; block < KRP_MASK_BLOCKS; ++block)
+        {
+            uint64_t block_val;
+            memcpy(&block_val, ptr_flags + (block * block_stream_size) + (r * 8), 8);
+            memcpy(&fe.frame_mask[block * 8], &block_val, 8);
+
+            for (size_t bit = 0; bit < 64; ++bit)
             {
-                uint64_t block_val;
-                memcpy(&block_val, &frame_flags[block][i*8], 8);
-                memcpy(&fe.frame_mask[block * 8], &block_val, 8);
-                for (size_t bit = 0; bit < 64; ++bit)
+                if (!(block_val & (1ULL << bit)))
                 {
-                    if (block_val & (1ULL << bit))
+                    continue;
+                }
+                const size_t idx = block * 64 + bit;
+                if (idx >= sizeof(krp_frame))
+                {
+                    continue; /* keyframe masks are all-ones; upper bits carry no data */
+                }
+                if (data_ptrs[idx] == nullptr)
+                {
+                    if (kz_api_log_parse->value > 0.0f)
                     {
-                        size_t idx = block * 64 + bit;
-                        if (idx >= sizeof(krp_frame)) 
-                        {
-                            continue;
-                        }
-                        if (data_ptrs[idx] == nullptr) 
-                        {
-                            if (kz_api_log_parse->value > 0.0f)
-                            {
-                                kz_log(&g_pb_parse_log, "[PARSE] WARNING: Column %zu has a bit set but no data pointer initialized.", idx);
-                            }
-                            continue;
-                        }
-                        if (data_ptrs[idx] >= ptr_data_end) 
-                        {
-                            if (kz_api_log_parse->value > 0.0f)
-                            {
-                                kz_log(&g_pb_parse_log, "[PARSE] WARNING: Column %zu pointer overran data buffer.", idx);
-                            }
-                            continue;
-                        }
-                        if (fe.frame_type == BIT_FRAMETYPE_KEYFRAME)
-                        {
-                            fe.data[idx] = *data_ptrs[idx]++;
-                        }
-                        else
-                        {
-                            fe.data[idx] ^= *data_ptrs[idx]++;
-                        }
+                        kz_log(&g_pb_parse_log, "[PARSE] WARNING: Column %zu has a bit set but no data pointer initialized.", idx);
                     }
+                    continue;
+                }
+                if (data_ptrs[idx] >= data_ends[idx])
+                {
+                    if (kz_api_log_parse->value > 0.0f)
+                    {
+                        kz_log(&g_pb_parse_log, "[PARSE] WARNING: column %zu overran its data stream.", idx);
+                    }
+                    continue;
+                }
+                if (fe.frame_type == KRP_FRAMETYPE_KEYFRAME)
+                {
+                    fe.data[idx] = *data_ptrs[idx]++;
+                }
+                else
+                {
+                    fe.data[idx] ^= *data_ptrs[idx]++;
                 }
             }
         }
-        else if (fe.frame_type == BIT_FRAMETYPE_EVENT)
-        {
-            // TODO: BIT_FRAMETYPE_EVENT
-        }
+        ++r;
 
-        krp_frame* f = reinterpret_cast<krp_frame*>(&fe.data);
-        out.frames.emplace_back((krp_playback_frame){
+        const krp_frame* f = reinterpret_cast<const krp_frame*>(fe.data);
+        out.frames.push_back({
                 f->vars.origin,
                 f->vars.v_angle,
                 f->vars.flags,
@@ -795,6 +864,7 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
                 });
         memcpy(last_frame_data, fe.data, sizeof(krp_frame));
     }
+    return;
 }
 static void print_header(const krp_header& header)
 {
@@ -804,7 +874,7 @@ static void print_header(const krp_header& header)
     char ip_str[INET_ADDRSTRLEN]; 
     inet_ntop(AF_INET, &ip_addr, ip_str, INET_ADDRSTRLEN);
 
-    kz_log(&g_pb_parse_log, "[PARSE] Header -> magic:             0x%llu",      static_cast<unsigned long long>(header.magic));
+    kz_log(&g_pb_parse_log, "[PARSE] Header -> magic:             0x%llX",      static_cast<unsigned long long>(header.magic));
     kz_log(&g_pb_parse_log, "[PARSE] Header -> version:           %llu",        static_cast<unsigned long long>(header.version));
     kz_log(&g_pb_parse_log, "---------------------------------------------------------");
     kz_log(&g_pb_parse_log, "[PARSE] Header -> player -> name:    %s",          header.player.name);
@@ -820,6 +890,7 @@ static void print_header(const krp_header& header)
     kz_log(&g_pb_parse_log, "[PARSE] Header -> size_types:        %u",          header.size_types);
     kz_log(&g_pb_parse_log, "[PARSE] Header -> size_flags:        %u",          header.size_flags);
     kz_log(&g_pb_parse_log, "[PARSE] Header -> size_data:         %u",          header.size_data);
+    kz_log(&g_pb_parse_log, "[PARSE] Header -> size_events:       %u",          header.size_events);
     kz_log(&g_pb_parse_log, "---------------------------------------------------------");
 }
 static std::string get_timestamp_string(uint64_t ts_ms, bool use_utc)

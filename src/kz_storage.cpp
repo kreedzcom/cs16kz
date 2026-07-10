@@ -22,12 +22,23 @@ static thread_local SQLite::Database* kz_storage_database = nullptr;
 static thread_local bool kz_storage_initialized = false;
 static thread_local kz::queue<log_entry> g_storage_log(64);
 
+/* Registers this thread's storage log queue exactly once (survives WS
+ * reconnect init/uninit cycles) and unregisters it at thread exit, so
+ * kz_log_flush never iterates a dangling thread_local queue. */
+namespace {
+struct storage_log_registration
+{
+    storage_log_registration()  { kz_log_addq(&g_storage_log); }
+    ~storage_log_registration() { kz_log_removeq(&g_storage_log); }
+};
+}
+
 void kz_storage_init(void)
 {
+    static thread_local storage_log_registration s_log_registration;
+
     if(!kz_storage_initialized)
     {
-        kz_log_addq(&g_storage_log);
-
         std::filesystem::path dir = g_data_dir / "kz_global" / "sqlite3";
         if (!std::filesystem::exists(dir))
         {
