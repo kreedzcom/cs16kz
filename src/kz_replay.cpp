@@ -8,6 +8,7 @@
 #include "kz_replay.h"
 #include "kz_storage.h"
 
+#include <algorithm>
 #include <condition_variable>
 #include <filesystem>
 
@@ -220,6 +221,52 @@ void kz_rp_update_header(void)
         {
             kz_log(nullptr, "Failed to create directory (%s): %s", std::filesystem::relative(dir, g_data_dir).c_str(), ec.message().c_str());
             return;
+        }
+    }
+    kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr);
+}
+void kz_rp_prune_replays(const char* mapname, kz::queue<log_entry>* log_queue)
+{
+    const int max_replays = static_cast<int>(kz_api_replays_max->value);
+    if (max_replays < 0)
+    {
+        return;
+    }
+
+    std::error_code ec;
+    std::filesystem::path map_dir = g_data_dir / "kz_global" / "replays" / mapname;
+    if (!std::filesystem::is_directory(map_dir, ec))
+    {
+        return;
+    }
+
+    std::vector<std::filesystem::path> replays;
+    for (const auto& entry : std::filesystem::directory_iterator(map_dir, ec))
+    {
+        if (entry.is_regular_file(ec) && entry.path().extension() == ".krpz")
+        {
+            replays.push_back(entry.path());
+        }
+    }
+    if (replays.size() <= static_cast<size_t>(max_replays))
+    {
+        return;
+    }
+
+    std::sort(replays.begin(), replays.end(),
+        [](const std::filesystem::path& a, const std::filesystem::path& b) {
+            return a.filename().string() < b.filename().string();
+        });
+
+    for (size_t i = static_cast<size_t>(max_replays); i < replays.size(); ++i)
+    {
+        if (std::filesystem::remove(replays[i], ec))
+        {
+            kz_log(log_queue, "[KRP] Pruned replay (%zu > %d): %s", i + 1, max_replays, replays[i].filename().string().c_str());
+        }
+        else if (ec)
+        {
+            kz_log(log_queue, "[KRP] Failed to prune replay %s: %s", replays[i].filename().string().c_str(), ec.message().c_str());
         }
     }
 }

@@ -578,6 +578,8 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             raw_path.replace_extension(".krpr");
             std::filesystem::remove(raw_path, ec);
             file_moved = true;
+
+            kz_rp_prune_replays(mapname.c_str(), &g_ws_log);
         }
 
         cleanup();
