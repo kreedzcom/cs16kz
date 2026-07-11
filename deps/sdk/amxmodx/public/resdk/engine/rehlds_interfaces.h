@@ -33,6 +33,15 @@ class IGameClient;
 #include <archtypes.h>
 #include <const.h>
 
+// See common/hookchains.h for the rationale (MSVC vs Itanium vtable dtor slots).
+#ifndef RESDK_VIRTUAL_DTOR
+	#if defined(_WIN32) && defined(__MINGW32__)
+		#define RESDK_VIRTUAL_DTOR(cls) virtual void msvc_vtable_slot_pad_() = 0;
+	#else
+		#define RESDK_VIRTUAL_DTOR(cls) virtual ~cls() {}
+	#endif
+#endif
+
 class INetChan;
 class IGameClient;
 
@@ -74,7 +83,7 @@ public:
 
 class IRehldsServerStatic {
 public:
-	virtual ~IRehldsServerStatic() { }
+	RESDK_VIRTUAL_DTOR(IRehldsServerStatic)
 
 	virtual int GetMaxClients() = 0;
 	virtual bool IsLogActive() = 0;
@@ -86,7 +95,7 @@ public:
 
 class IRehldsServerData {
 public:
-	virtual ~IRehldsServerData() { }
+	RESDK_VIRTUAL_DTOR(IRehldsServerData)
 
 	virtual const char* GetModelName() = 0;
 	virtual const char* GetName() = 0;

@@ -28,10 +28,23 @@
 
 #pragma once
 
+// ABI compat: the Windows engine (swds.dll) is MSVC-built, where a virtual
+// destructor takes ONE vtable slot; the Itanium ABI (x86-windows-gnu builds)
+// gives it TWO, shifting every later method by one slot. For engine-implemented
+// interfaces, swap the dtor for a one-slot placeholder so slots stay aligned.
+// Never delete an engine interface through these classes.
+#ifndef RESDK_VIRTUAL_DTOR
+	#if defined(_WIN32) && defined(__MINGW32__)
+		#define RESDK_VIRTUAL_DTOR(cls) virtual void msvc_vtable_slot_pad_() = 0;
+	#else
+		#define RESDK_VIRTUAL_DTOR(cls) virtual ~cls() {}
+	#endif
+#endif
+
 template<typename t_ret, typename ...t_args>
 class IHookChain {
 protected:
-	virtual ~IHookChain() {}
+	RESDK_VIRTUAL_DTOR(IHookChain)
 
 public:
 	virtual t_ret callNext(t_args... args) = 0;
@@ -41,7 +54,7 @@ public:
 template<typename t_ret, typename t_class, typename ...t_args>
 class IHookChainClass {
 protected:
-	virtual ~IHookChainClass() {}
+	RESDK_VIRTUAL_DTOR(IHookChainClass)
 
 public:
 	virtual t_ret callNext(t_class *, t_args... args) = 0;
@@ -52,7 +65,7 @@ template<typename ...t_args>
 class IVoidHookChain
 {
 protected:
-	virtual ~IVoidHookChain() {}
+	RESDK_VIRTUAL_DTOR(IVoidHookChain)
 
 public:
 	virtual void callNext(t_args... args) = 0;
@@ -63,7 +76,7 @@ template<typename t_class, typename ...t_args>
 class IVoidHookChainClass
 {
 protected:
-	virtual ~IVoidHookChainClass() {}
+	RESDK_VIRTUAL_DTOR(IVoidHookChainClass)
 
 public:
 	virtual void callNext(t_class *, t_args... args) = 0;
