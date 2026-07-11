@@ -563,7 +563,7 @@ void kz_pb_parser_thread(void)
                     }
                     else if (kz_api_log_parse->value > 0.0f)
                     {
-                        kz_log(&g_pb_parse_log, "[PARSE] Unknown input ext: %s", std::filesystem::relative(*file, g_data_dir).c_str());
+                        kz_log(&g_pb_parse_log, "[PARSE] Unknown input ext: %s", std::filesystem::relative(*file, g_data_dir).string().c_str());
                     }
                 }
                 fclose(fp);
@@ -571,7 +571,7 @@ void kz_pb_parser_thread(void)
             if (rsize > 1)
             {
                 std::lock_guard<std::mutex> lock(g_pb_data_mtx);
-                kz_log(&g_pb_parse_log, "[PARSE] Loaded %zu frames from replay: %s/%s", pb_data.frames.size(), file->parent_path().filename().c_str(), file->filename().c_str());
+                kz_log(&g_pb_parse_log, "[PARSE] Loaded %zu frames from replay: %s/%s", pb_data.frames.size(), file->parent_path().filename().string().c_str(), file->filename().string().c_str());
 
                 g_pb_data.push_back(std::move(pb_data));
                 g_pb_data.shrink_to_fit();
@@ -580,7 +580,7 @@ void kz_pb_parser_thread(void)
             }
             else
             {
-                kz_log(&g_pb_parse_log, "[PARSE] Failed to parse replay: %s", std::filesystem::relative(*file, g_data_dir).c_str());
+                kz_log(&g_pb_parse_log, "[PARSE] Failed to parse replay: %s", std::filesystem::relative(*file, g_data_dir).string().c_str());
             }
             g_pb_parse_queue.pop();
         }
@@ -600,7 +600,7 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
     {
         if (kz_api_log_parse->value > 0.0f)
         {
-            kz_log(&g_pb_parse_log, "[PARSE] Decompression failed (%s): %s", krp::error_str(err), std::filesystem::relative(file, g_data_dir).c_str());
+            kz_log(&g_pb_parse_log, "[PARSE] Decompression failed (%s): %s", krp::error_str(err), std::filesystem::relative(file, g_data_dir).string().c_str());
         }
         return;
     }
@@ -611,7 +611,7 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
         std::string d_bytes = format_bytes(static_cast<uint64_t>(d_buffer.size()));
 
         kz_log(&g_pb_parse_log, "---------------------------------------------------------");
-        kz_log(&g_pb_parse_log, "[PARSE] File: %s", std::filesystem::relative(file, g_data_dir).c_str());
+        kz_log(&g_pb_parse_log, "[PARSE] File: %s", std::filesystem::relative(file, g_data_dir).string().c_str());
         kz_log(&g_pb_parse_log, "[PARSE] File size: (compressed: %s, decompressed: %s)", c_bytes.c_str(), d_bytes.c_str());
         kz_log(&g_pb_parse_log, "---------------------------------------------------------");
     }
@@ -640,7 +640,7 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
                     kz_log(&g_pb_parse_log, "[PARSE] Unknown replay format version: v%llu", static_cast<unsigned long long>(header.version));
                     break;
                 }
-                default: kz_log(&g_pb_parse_log, "[PARSE] Critical: corrupt replay (%s): %s", krp::error_str(err), std::filesystem::relative(file, g_data_dir).c_str());
+                default: kz_log(&g_pb_parse_log, "[PARSE] Critical: corrupt replay (%s): %s", krp::error_str(err), std::filesystem::relative(file, g_data_dir).string().c_str());
             }
         }
         return;

@@ -45,11 +45,11 @@ void kz_storage_init(void)
             std::error_code ec;
             if (std::filesystem::create_directories(dir, ec))
             {
-                kz_log(&g_storage_log, "Directory created: %s", std::filesystem::relative(dir, g_data_dir).c_str());
+                kz_log(&g_storage_log, "Directory created: %s", std::filesystem::relative(dir, g_data_dir).string().c_str());
             }
             else
             {
-                kz_log(&g_storage_log, "Failed to create directory (%s): %s", std::filesystem::relative(dir, g_data_dir).c_str(), ec.message().c_str());
+                kz_log(&g_storage_log, "Failed to create directory (%s): %s", std::filesystem::relative(dir, g_data_dir).string().c_str(), ec.message().c_str());
                 return;
             }
         }

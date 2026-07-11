@@ -214,11 +214,11 @@ void kz_rp_update_header(void)
         std::error_code ec;
         if (std::filesystem::create_directories(dir, ec))
         {
-            kz_log(nullptr, "Directory created: %s", std::filesystem::relative(dir, g_data_dir).c_str());
+            kz_log(nullptr, "Directory created: %s", std::filesystem::relative(dir, g_data_dir).string().c_str());
         }
         else
         {
-            kz_log(nullptr, "Failed to create directory (%s): %s", std::filesystem::relative(dir, g_data_dir).c_str(), ec.message().c_str());
+            kz_log(nullptr, "Failed to create directory (%s): %s", std::filesystem::relative(dir, g_data_dir).string().c_str(), ec.message().c_str());
             return;
         }
     }
@@ -662,7 +662,7 @@ static void kz_rp_writer_thread(void)
                     }
                     else
                     {
-                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not create %s.tmp (%s)", std::filesystem::relative(path, g_data_dir).c_str(), strerror(errno));
+                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not create %s.tmp (%s)", std::filesystem::relative(path, g_data_dir).string().c_str(), strerror(errno));
                     }
                     memset(&s_last[id], 0, sizeof(s_last[0]));
                     s_counter[id] = 0;
@@ -755,7 +755,7 @@ static void kz_rp_writer_thread(void)
                     }
                     if (!s_fd[id])
                     {
-                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not open %s.tmp (%s)", std::filesystem::relative(path, g_data_dir).c_str(), strerror(errno));
+                        kz_log(&g_replay_writer_log, "[KRP] ERROR: Could not open %s.tmp (%s)", std::filesystem::relative(path, g_data_dir).string().c_str(), strerror(errno));
                     }
                     break;
                 }
@@ -820,7 +820,7 @@ static void kz_rp_writer_thread(void)
 
                         if (rename(s_filepath[id], new_path) == 0)
                         {
-                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s", std::filesystem::relative(npath, g_data_dir).c_str());
+                            kz_log(&g_replay_writer_log, "[KRP] Saved replay: %s", std::filesystem::relative(npath, g_data_dir).string().c_str());
                         }
                         else
                         {
@@ -890,7 +890,7 @@ static void kz_rp_upload_thread(void)
                 fp = kz_rp_compress_file(pathname.string().c_str());
                 if (!fp)
                 {
-                    kz_log(&g_replay_upload_log, "[UPLOAD] Failed to compress file: %s", std::filesystem::relative(pathname, g_data_dir).c_str());
+                    kz_log(&g_replay_upload_log, "[UPLOAD] Failed to compress file: %s", std::filesystem::relative(pathname, g_data_dir).string().c_str());
                     g_replay_upload_queue.pop();
                     continue;
                 }

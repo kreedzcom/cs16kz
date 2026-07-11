@@ -176,7 +176,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                             g_active_uploads.insert(*(it->message));
                             if (kz_api_log_upload->value > 0.0f)
                             {
-                                kz_log(nullptr, "[UPLOAD] Retry (%d): %s", it->retry_count + 1, std::filesystem::relative(replay, g_data_dir).c_str());
+                                kz_log(nullptr, "[UPLOAD] Retry (%d): %s", it->retry_count + 1, std::filesystem::relative(replay, g_data_dir).string().c_str());
                             }
                             kz_rp_compress_and_upload_async(metadata);
                         }
@@ -184,7 +184,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
                         {
                             if (kz_api_log_upload->value > 0.0f)
                             {
-                                kz_log(nullptr, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+                                kz_log(nullptr, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).string().c_str());
                             }
                         }
                     }
@@ -475,7 +475,7 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
 
         if (kz_api_log_upload->value > 0.0f)
         {
-            kz_log(&g_ws_log, "[UPLOAD] File: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+            kz_log(&g_ws_log, "[UPLOAD] File: %s", std::filesystem::relative(replay, g_data_dir).string().c_str());
         }
 
         kz_storage_save(shared_msg, 0, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
@@ -487,7 +487,7 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
     {
         if (kz_api_log_upload->value > 0.0f)
         {
-            kz_log(&g_ws_log, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).c_str());
+            kz_log(&g_ws_log, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).string().c_str());
         }
     }
     return nullptr;
@@ -546,7 +546,7 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             filepath.replace_extension(".krpz");
             if (!std::filesystem::exists(filepath))
             {
-                kz_log(&g_ws_log, "[ACK] Compressed replay not found: %s", std::filesystem::relative(filepath, g_data_dir).c_str());
+                kz_log(&g_ws_log, "[ACK] Compressed replay not found: %s", std::filesystem::relative(filepath, g_data_dir).string().c_str());
                 cleanup();
                 return nullptr;
             }
@@ -567,8 +567,8 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             if (ec)
             {
                 kz_log(&g_ws_log, "[ACK] Failed to move replay %s -> %s: %s",
-                    std::filesystem::relative(filepath, g_data_dir).c_str(),
-                    std::filesystem::relative(n_filepath, g_data_dir).c_str(),
+                    std::filesystem::relative(filepath, g_data_dir).string().c_str(),
+                    std::filesystem::relative(n_filepath, g_data_dir).string().c_str(),
                     ec.message().c_str());
                 cleanup();
                 return nullptr;
