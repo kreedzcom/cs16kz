@@ -1,6 +1,6 @@
 # KRP replay format
 
-This document describes the **KRP** replay format used by the KZ Global API module to capture, store, upload, and play back Kreedz runs. It is the prose companion to `src/include/krp_format.h`, the single canonical definition of the on-disk layout; the format is produced/consumed by `src/kz_replay.cpp` (writer/compressor) and `src/kz_replay_pb.cpp` (parser/playback).
+This document describes the **KRP** replay format used by the KZ Global API module to capture, store, upload, and play back Kreedz runs. It is the prose companion to `src/include/krp_format.h`, the single canonical definition of the on-disk layout. The reference codec (compress/decompress/parse) is `src/krp_format.cpp` (API in `src/include/krp_codec.h`); `src/kz_replay.cpp` writes raw captures and `src/kz_replay_pb.cpp` handles playback on top of it.
 
 The format has two physical representations:
 
@@ -139,7 +139,7 @@ Decoding reverses this: keyframe bytes are copied directly (`dst[i] = data`), de
 
 ## 5. Columnar reorganization + compression (`.krpz`)
 
-Before upload, `kz_rp_reorganize_data` transposes the row-major `.krpr` body into field-parallel streams, then the whole thing is zstd-compressed (`ZSTD_compress`, level from `kz_api_replays_clevel`). The decompressed `.krpz` body layout is:
+Before upload, `krp::compress` (krp_format.cpp) transposes the row-major `.krpr` body into field-parallel streams, then zstd-compresses the whole thing (level from `kz_api_replays_clevel`). The decompressed `.krpz` body layout is:
 
 ```
 [ header ][ frame-types ][ mask/flags ][ column data ][ events ]
@@ -160,7 +160,7 @@ Compression runs on the upload thread; if a queued file is already `.krpz` it is
 
 ## 6. Playback decoding
 
-`parse_playback` (in `kz_replay_pb.cpp`) reconstructs frames from a `.krpz`:
+`parse_playback` (in `kz_replay_pb.cpp`, via `krp::map_sections` + `krp::for_each_record`) reconstructs frames from a `.krpz`:
 
 1. `ZSTD_getFrameContentSize` + `ZSTD_decompress` to recover the columnar body.
 2. Read the header, validate `magic`, and dispatch on `version` (only `1` is accepted; anything else is rejected). Slice the four sections using `size_types` / `size_flags` / `size_data`, with the body starting right after the 256-byte header.

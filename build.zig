@@ -455,6 +455,7 @@ pub fn build(b: *std.Build) !void
 		.root = b.path("src/"),
 		.files = &.{
 			"amxxmodule.cpp",
+			"krp_format.cpp",
 			"kz_basic_ac.cpp",
 			"kz_cvars.cpp",
 			"kz_natives.cpp",

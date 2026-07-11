@@ -10,8 +10,7 @@
 #include "kz_storage.h"
 #include "kz_natives.h"
 
-#include "zstd.h"
-#include "zstd_errors.h"
+#include "krp_codec.h"
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -44,7 +43,6 @@ static void kz_bot_footsteps(edict_t* pent);
 
 static void kz_pb_parser_thread(void);
 static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, const std::filesystem::path& file);
-static void parse_playback_v1(krp_playback& out, const krp_header& header, const std::vector<uint8_t>& d_buffer, size_t d_size);
 static void print_header(const krp_header& header);
 static std::string get_timestamp_string(uint64_t ts_ms, bool use_utc);
 std::filesystem::path kz_pb_find_fastest(const char* mapname);
@@ -596,29 +594,16 @@ void kz_pb_parser_thread(void)
 /***************************************************************************************************************/
 static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, const std::filesystem::path& file)
 {
-    unsigned long long frame_size = ZSTD_getFrameContentSize(src.data(), src.size());
-    if (frame_size == ZSTD_CONTENTSIZE_ERROR || frame_size == ZSTD_CONTENTSIZE_UNKNOWN)
+    std::vector<uint8_t> d_buffer;
+    krp::error err = krp::zstd_decompress(src.data(), src.size(), d_buffer);
+    if (err != krp::error::ok)
     {
         if (kz_api_log_parse->value > 0.0f)
         {
-            kz_log(&g_pb_parse_log, "[PARSE] Could not determine decompressed size for: %s", std::filesystem::relative(file, g_data_dir).c_str());
+            kz_log(&g_pb_parse_log, "[PARSE] Decompression failed (%s): %s", krp::error_str(err), std::filesystem::relative(file, g_data_dir).c_str());
         }
         return;
     }
-    std::vector<uint8_t> d_buffer(static_cast<size_t>(frame_size));
-    size_t d_size = ZSTD_decompress(d_buffer.data(), d_buffer.size(), src.data(), src.size());
-
-    if (ZSTD_isError(d_size))
-    {
-        if (kz_api_log_parse->value > 0.0f)
-        {
-            kz_log(&g_pb_parse_log, "[PARSE] Decompression failed: %s", ZSTD_getErrorName(d_size));
-        }
-        return;
-    }
-
-    krp_header header;
-    memcpy(&header, d_buffer.data(), sizeof(header));
 
     if (kz_api_log_parse->value > 0.0f)
     {
@@ -630,241 +615,57 @@ static void parse_playback(krp_playback& out, const std::vector<uint8_t>& src, c
         kz_log(&g_pb_parse_log, "[PARSE] File size: (compressed: %s, decompressed: %s)", c_bytes.c_str(), d_bytes.c_str());
         kz_log(&g_pb_parse_log, "---------------------------------------------------------");
     }
-    if (header.magic != KRP_MAGIC)
+
+    krp::sections s;
+    err = krp::map_sections(d_buffer.data(), d_buffer.size(), s);
+    if (err != krp::error::ok)
     {
-        kz_log(&g_pb_parse_log, "[PARSE] Bad magic -> expected (0x%llX), got (0x%llX)", static_cast<unsigned long long>(KRP_MAGIC), static_cast<unsigned long long>(header.magic));
+        if (kz_api_log_parse->value > 0.0f)
+        {
+
+            krp_header header = {};
+            if (d_buffer.size() >= sizeof(krp_header))
+            {
+                memcpy(&header, d_buffer.data(), sizeof(header));
+            }
+            switch (err)
+            {
+                case krp::error::bad_magic:
+                {
+                    kz_log(&g_pb_parse_log, "[PARSE] Bad magic -> expected (0x%llX), got (0x%llX)", static_cast<unsigned long long>(KRP_MAGIC), static_cast<unsigned long long>(header.magic));
+                    break;
+                }
+                case krp::error::bad_version:
+                {
+                    kz_log(&g_pb_parse_log, "[PARSE] Unknown replay format version: v%llu", static_cast<unsigned long long>(header.version));
+                    break;
+                }
+                default: kz_log(&g_pb_parse_log, "[PARSE] Critical: corrupt replay (%s): %s", krp::error_str(err), std::filesystem::relative(file, g_data_dir).c_str());
+            }
+        }
         return;
     }
     if (kz_api_log_parse->value > 0.0f)
     {
-        print_header(header);
+        print_header(*s.header);
     }
-    switch(header.version)
-    {
-        case 1:
-        {
-            parse_playback_v1(out, header, d_buffer, d_size);
-            break;
-        }
-        default:
-        {
-            kz_log(&g_pb_parse_log, "[PARSE] Unknown replay format version: v%llu", static_cast<unsigned long long>(header.version));
-        }
-    }
-}
-static void parse_playback_v1(krp_playback& out, const krp_header& header, const std::vector<uint8_t>& d_buffer, size_t d_size)
-{
+
+    out.header = *s.header;
     out.frames.clear();
+    out.frames.reserve(s.num_frames);
 
-    if (d_size < sizeof(krp_header))
-    {
-        kz_log(&g_pb_parse_log, "[PARSE] Critical: file (%zu bytes) is smaller than the header (%zu).", d_size, sizeof(krp_header));
-        return;
-    }
-
-    /* Sanity: all four sections must fit inside the file. Summed in 64-bit so
-     * hostile u32 sizes can't overflow the check. */
-    const uint64_t total_sections = static_cast<uint64_t>(sizeof(krp_header))
-                                  + header.size_types + header.size_flags
-                                  + header.size_data  + header.size_events;
-    if (total_sections > d_size)
-    {
-        if (kz_api_log_parse->value > 0.0f)
+    krp::for_each_record(s,
+        [&out](size_t, uint8_t, const krp_frame& f)
         {
-            kz_log(&g_pb_parse_log, "[PARSE] Critical: header sections claim %llu bytes, but file is %zu bytes.", static_cast<unsigned long long>(total_sections), d_size);
-        }
-        return;
-    }
-
-    const uint8_t* ptr_types = d_buffer.data() + sizeof(krp_header);
-    const uint8_t* ptr_flags = ptr_types + header.size_types;
-    const uint8_t* ptr_data  = ptr_flags + header.size_flags;
-    /* events section follows ptr_data + size_data; unused for playback */
-
-    const size_t block_stream_size = header.size_flags / KRP_MASK_BLOCKS;
-    const size_t num_frames        = block_stream_size / sizeof(uint64_t);
-
-    /* Sanity: the run must start with a keyframe (delta base). */
-    if (header.size_types == 0 || ptr_types[0] != KRP_FRAMETYPE_KEYFRAME)
-    {
-        if (kz_api_log_parse->value > 0.0f)
-        {
-            kz_log(&g_pb_parse_log, "[PARSE] Critical: the first frame is not a keyframe.");
-        }
-        return;
-    }
-
-    /* Pass 1: validate every frame type, count rows/events, and derive
-     * per-column data sizes from the masks. */
-    size_t rows   = 0;
-    size_t events = 0;
-    size_t data_sizes[sizeof(krp_frame)] = {0};
-
-    for (size_t t = 0; t < header.size_types; ++t)
-    {
-        const uint8_t type = ptr_types[t];
-
-        if (type == KRP_FRAMETYPE_EVENT)
-        {
-            ++events;
-            continue;
-        }
-        if (type != KRP_FRAMETYPE_DELTA && type != KRP_FRAMETYPE_KEYFRAME)
-        {
-            if (kz_api_log_parse->value > 0.0f)
-            {
-                kz_log(&g_pb_parse_log, "[PARSE] Critical: unknown frame type (%u) at row %zu.", type, t);
-            }
-            return;
-        }
-        if (rows >= num_frames)
-        {
-            if (kz_api_log_parse->value > 0.0f)
-            {
-                kz_log(&g_pb_parse_log, "[PARSE] Critical: more DELTA/KEYFRAME rows than the flags stream contains.");
-            }
-            return;
-        }
-        for (size_t block = 0; block < KRP_MASK_BLOCKS; ++block)
-        {
-            uint64_t block_val;
-            memcpy(&block_val, ptr_flags + (block * block_stream_size) + (rows * 8), 8);
-
-            for (size_t bit = 0; bit < 64; ++bit)
-            {
-                const size_t idx = block * 64 + bit;
-                if (idx < sizeof(krp_frame) && (block_val & (1ULL << bit)))
-                {
-                    ++data_sizes[idx];
-                }
-            }
-        }
-        ++rows;
-    }
-
-    /* Sanity: streams must agree with each other and with the header. */
-    if (rows != num_frames)
-    {
-        if (kz_api_log_parse->value > 0.0f)
-        {
-            kz_log(&g_pb_parse_log, "[PARSE] Critical: flags stream holds %zu frames, types stream holds %zu.", num_frames, rows);
-        }
-        return;
-    }
-    if (events != header.size_events)
-    {
-        if (kz_api_log_parse->value > 0.0f)
-        {
-            kz_log(&g_pb_parse_log, "[PARSE] Critical: types stream has %zu events, header claims %u.", events, header.size_events);
-        }
-        return;
-    }
-
-    uint64_t total_data = 0;
-    for (size_t i = 0; i < sizeof(krp_frame); ++i)
-    {
-        total_data += data_sizes[i];
-    }
-    if (total_data != header.size_data)
-    {
-        if (kz_api_log_parse->value > 0.0f)
-        {
-            kz_log(&g_pb_parse_log, "[PARSE] Critical: masks demand %llu data bytes, header claims %u.", static_cast<unsigned long long>(total_data), header.size_data);
-        }
-        return;
-    }
-
-    /* Column start/end pointers. Column i's stream is exactly data_sizes[i]
-     * bytes; the per-column end stops one corrupt column bleeding into the
-     * next. Total fit was proven above. */
-    const uint8_t* data_ptrs[sizeof(krp_frame)];
-    const uint8_t* data_ends[sizeof(krp_frame)];
-    {
-        const uint8_t* cursor = ptr_data;
-        for (size_t i = 0; i < sizeof(krp_frame); ++i)
-        {
-            data_ptrs[i] = cursor;
-            cursor += data_sizes[i];
-            data_ends[i] = cursor;
-        }
-    }
-
-    out.header = header;
-    out.frames.reserve(num_frames);
-
-    uint8_t last_frame_data[sizeof(krp_frame)] = {0};
-    size_t r = 0;
-
-    /* Pass 2: reconstruct frames (keyframe = copy, delta = XOR against the
-     * previously reconstructed frame). */
-    for (size_t t = 0; t < header.size_types; ++t)
-    {
-        krp_playback_entry fe;
-        fe.frame_type = ptr_types[t];
-
-        if (fe.frame_type == KRP_FRAMETYPE_EVENT)
-        {
-            // Nothing to do here, unused for playback - no point in reading it
-            continue;
-        }
-
-        memcpy(fe.data, last_frame_data, sizeof(krp_frame));
-        for (size_t block = 0; block < KRP_MASK_BLOCKS; ++block)
-        {
-            uint64_t block_val;
-            memcpy(&block_val, ptr_flags + (block * block_stream_size) + (r * 8), 8);
-            memcpy(&fe.frame_mask[block * 8], &block_val, 8);
-
-            for (size_t bit = 0; bit < 64; ++bit)
-            {
-                if (!(block_val & (1ULL << bit)))
-                {
-                    continue;
-                }
-                const size_t idx = block * 64 + bit;
-                if (idx >= sizeof(krp_frame))
-                {
-                    continue; /* keyframe masks are all-ones; upper bits carry no data */
-                }
-                if (data_ptrs[idx] == nullptr)
-                {
-                    if (kz_api_log_parse->value > 0.0f)
-                    {
-                        kz_log(&g_pb_parse_log, "[PARSE] WARNING: Column %zu has a bit set but no data pointer initialized.", idx);
-                    }
-                    continue;
-                }
-                if (data_ptrs[idx] >= data_ends[idx])
-                {
-                    if (kz_api_log_parse->value > 0.0f)
-                    {
-                        kz_log(&g_pb_parse_log, "[PARSE] WARNING: column %zu overran its data stream.", idx);
-                    }
-                    continue;
-                }
-                if (fe.frame_type == KRP_FRAMETYPE_KEYFRAME)
-                {
-                    fe.data[idx] = *data_ptrs[idx]++;
-                }
-                else
-                {
-                    fe.data[idx] ^= *data_ptrs[idx]++;
-                }
-            }
-        }
-        ++r;
-
-        const krp_frame* f = reinterpret_cast<const krp_frame*>(fe.data);
-        out.frames.push_back({
-                f->vars.origin,
-                f->vars.v_angle,
-                f->vars.flags,
-                f->vars.button,
-                f->vars.oldbuttons,
-                });
-        memcpy(last_frame_data, fe.data, sizeof(krp_frame));
-    }
-    return;
+            out.frames.push_back({
+                    f.vars.origin,
+                    f.vars.v_angle,
+                    f.vars.flags,
+                    f.vars.button,
+                    f.vars.oldbuttons,
+                    });
+        },
+        [](size_t, uint8_t) {});
 }
 static void print_header(const krp_header& header)
 {

@@ -49,13 +49,6 @@ typedef struct
     int32_t oldbuttons;
 } krp_playback_frame;
 
-typedef struct
-{
-    uint8_t frame_type;
-    uint8_t frame_mask[sizeof(krp_mask)];
-    uint8_t data[sizeof(krp_frame)];
-} krp_playback_entry;
-
 // Actual playback data (in-memory)
 typedef struct
 {

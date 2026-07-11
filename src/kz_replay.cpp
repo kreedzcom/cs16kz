@@ -12,8 +12,7 @@
 #include <condition_variable>
 #include <filesystem>
 
-#include "zstd.h"
-#include "zstd_errors.h"
+#include "krp_codec.h"
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -525,289 +524,9 @@ static void kz_rp_write_delta(FILE* fp, krp_packet* curr, krp_packet* last)
         fwrite(buffer, idx, 1, fp);
     }
 }
-static std::vector<uint8_t> kz_rp_reorganize_data(const std::vector<char>& src)
-{
-    std::vector<uint8_t> frame_type;
-    std::vector<uint8_t> frame_data[sizeof(krp_frame)];
-    std::vector<uint8_t> frame_events;
-
-    const size_t num_blocks = sizeof(krp_mask) / sizeof(uint64_t);
-    std::vector<uint8_t> frame_flags[num_blocks];
-
-    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(src.data()) + sizeof(krp_header);
-    const uint8_t* end = reinterpret_cast<const uint8_t*>(src.data()) + src.size();
-
-    while (ptr < end)
-    {
-        uint8_t type = *ptr++;
-        frame_type.push_back(type);
-
-        if (type == KRP_FRAMETYPE_DELTA || type == KRP_FRAMETYPE_KEYFRAME)
-        {
-            krp_mask mask;
-            memcpy(&mask, ptr, sizeof(krp_mask)); ptr += sizeof(krp_mask);
-
-            uint8_t* m_ptr = reinterpret_cast<uint8_t*>(&mask);
-            for (size_t block = 0; block < num_blocks; ++block)
-            {
-                for (size_t i = 0; i < 8; ++i)
-                {
-                    frame_flags[block].push_back(m_ptr[block * 8 + i]);
-                }
-            }
-
-            size_t byte_idx = 0;
-            for (size_t i = 0; i < sizeof(krp_mask) && byte_idx < sizeof(krp_frame); ++i)
-            {
-                for (size_t bit = 0; bit < 8; ++bit)
-                {
-                    if (m_ptr[i] & (1 << bit))
-                    {
-                        if (ptr < end)
-                        {
-                            frame_data[byte_idx].push_back(*ptr++);
-                        }
-                    }
-
-                    if (++byte_idx >= sizeof(krp_frame))
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-        else if (type == KRP_FRAMETYPE_EVENT)
-        {
-            uint8_t event = *ptr++;
-            frame_events.push_back(event);
-        }
-    }
-
-    krp_header header;
-    memcpy(&header, src.data(), sizeof(krp_header));
-    header.size_types  = static_cast<uint32_t>(frame_type.size());
-    header.size_flags  = 0;
-    header.size_data   = 0;
-    header.size_events = static_cast<uint32_t>(frame_events.size());
-
-    for (size_t i = 0; i < num_blocks; ++i)
-    {
-        header.size_flags += static_cast<uint32_t>(frame_flags[i].size());
-    }
-    for (size_t i = 0; i < sizeof(krp_frame); ++i)
-    {
-        header.size_data += static_cast<uint32_t>(frame_data[i].size());
-    }
-
-    std::vector<uint8_t> result;
-    result.reserve(src.size());
-
-    // Result: [header][frametypes][masks][data][events]
-    uint8_t* h_ptr = reinterpret_cast<uint8_t*>(&header);
-    result.insert(result.end(), h_ptr, h_ptr + sizeof(header));
-    result.insert(result.end(), frame_type.begin(), frame_type.end());
-
-    for (size_t i = 0; i < num_blocks; ++i)
-    {
-        result.insert(result.end(), frame_flags[i].begin(), frame_flags[i].end());
-    }
-    for (size_t i = 0; i < sizeof(krp_frame); ++i)
-    {
-        if (!frame_data[i].empty())
-        {
-            result.insert(result.end(), frame_data[i].begin(), frame_data[i].end());
-        }
-    }
-    result.insert(result.end(), frame_events.begin(), frame_events.end());
-    return result;
-}
-static FILE* kz_rp_compress_file(const char* file)
+static bool kz_rp_read_file(const char* file, std::vector<uint8_t>& out)
 {
     FILE* fp = fopen(file, "rb");
-    if (!fp) 
-    {
-        return nullptr;
-    }
-
-    fseek(fp, 0, SEEK_END);
-    size_t src_size = ftell(fp);
-    rewind(fp);
-
-    std::vector<char> src_buffer(src_size);
-    size_t read_bytes = fread(src_buffer.data(), 1, src_size, fp);
-    fclose(fp);
-
-    if (read_bytes != src_size)
-    {
-        return nullptr;
-    }
-
-    size_t max_dst_size = ZSTD_compressBound(src_size);
-    std::vector<char> dst_buffer(max_dst_size);
-    std::vector<uint8_t> r_buffer = kz_rp_reorganize_data(src_buffer);
-
-    int c_level = static_cast<int>(kz_api_replays_clevel->value); 
-    size_t compressed_size = ZSTD_compress(dst_buffer.data(), max_dst_size, r_buffer.data(), r_buffer.size(), c_level);
-
-    if (ZSTD_isError(compressed_size))
-    {
-        kz_log(&g_replay_upload_log, "[ZSTD] Compression failed: %s", ZSTD_getErrorName(compressed_size));
-        return nullptr;
-    }
-
-    std::filesystem::path compressed_path(file);
-    compressed_path.replace_extension(".krpz");
-
-    FILE* out_fp = fopen(compressed_path.string().c_str(), "wb+");
-    if (!out_fp)
-    {
-        return nullptr;
-    }
-
-    fwrite(dst_buffer.data(), 1, compressed_size, out_fp);
-    rewind(out_fp);
-    return out_fp;
-
-}
-static std::vector<uint8_t> kz_rp_restore_data(const std::vector<uint8_t>& src)
-{
-    std::vector<uint8_t> result;
-
-    if (src.size() < sizeof(krp_header))
-    {
-        return result;
-    }
-
-    krp_header header;
-    memcpy(&header, src.data(), sizeof(header));
-
-    const size_t num_blocks = sizeof(krp_mask) / sizeof(uint64_t);
-    const uint64_t total = static_cast<uint64_t>(sizeof(krp_header))
-                         + header.size_types + header.size_flags
-                         + header.size_data  + header.size_events;
-
-    if (total > src.size() || (header.size_flags % (num_blocks * sizeof(uint64_t))) != 0)
-    {
-        return result;
-    }
-
-    const uint8_t* ptr_types  = src.data() + sizeof(krp_header);
-    const uint8_t* ptr_flags  = ptr_types + header.size_types;
-    const uint8_t* ptr_data   = ptr_flags + header.size_flags;
-    const uint8_t* ptr_events = ptr_data + header.size_data;
-
-    const size_t block_stream_size = header.size_flags / num_blocks;
-    const size_t num_frames        = block_stream_size / sizeof(uint64_t);
-
-    size_t data_sizes[sizeof(krp_frame)] = {0};
-    size_t rows = 0;
-    size_t events = 0;
-
-    for (size_t t = 0; t < header.size_types; ++t)
-    {
-        const uint8_t type = ptr_types[t];
-        if (type == KRP_FRAMETYPE_EVENT)
-        {
-            events++;
-            continue;
-        }
-        if (type != KRP_FRAMETYPE_DELTA && type != KRP_FRAMETYPE_KEYFRAME)
-        {
-            return result;
-        }
-        if (rows >= num_frames)
-        {
-            return result;
-        }
-        for (size_t block = 0; block < num_blocks; ++block)
-        {
-            uint64_t block_val;
-            memcpy(&block_val, ptr_flags + (block * block_stream_size) + (rows * 8), 8);
-            for (size_t bit = 0; bit < 64; ++bit)
-            {
-                const size_t idx = block * 64 + bit;
-                if (idx < sizeof(krp_frame) && (block_val & (1ULL << bit)))
-                {
-                    data_sizes[idx]++;
-                }
-            }
-        }
-        rows++;
-    }
-    if (events > header.size_events)
-    {
-        return result;
-    }
-
-    const uint8_t* col[sizeof(krp_frame)];
-    {
-        const uint8_t* cursor = ptr_data;
-        for (size_t i = 0; i < sizeof(krp_frame); ++i)
-        {
-            col[i] = cursor;
-            cursor += data_sizes[i];
-        }
-        if (cursor > ptr_data + header.size_data)
-        {
-            return result;
-        }
-    }
-
-    krp_header out_header = header;
-    out_header.size_types  = 0;
-    out_header.size_flags  = 0;
-    out_header.size_data   = 0;
-    out_header.size_events = 0;
-
-    result.reserve(sizeof(krp_header) + header.size_types * (1 + sizeof(krp_mask)) + header.size_data + header.size_events);
-
-    const uint8_t* h_ptr = reinterpret_cast<const uint8_t*>(&out_header);
-    result.insert(result.end(), h_ptr, h_ptr + sizeof(out_header));
-
-    size_t r = 0;
-    const uint8_t* ev = ptr_events;
-    for (size_t t = 0; t < header.size_types; ++t)
-    {
-        const uint8_t type = ptr_types[t];
-        result.push_back(type);
-
-        if (type == KRP_FRAMETYPE_EVENT)
-        {
-            result.push_back(*ev++);
-            continue;
-        }
-
-        uint8_t mask[sizeof(krp_mask)];
-        for (size_t block = 0; block < num_blocks; ++block)
-        {
-            memcpy(&mask[block * 8], ptr_flags + (block * block_stream_size) + (r * 8), 8);
-        }
-        result.insert(result.end(), mask, mask + sizeof(mask));
-
-        for (size_t i = 0; i < sizeof(krp_frame); ++i)
-        {
-            if (mask[i / 8] & (1u << (i & 7)))
-            {
-                result.push_back(*col[i]++);
-            }
-        }
-        r++;
-    }
-    return result;
-}
-bool kz_rp_compress_replay(const std::filesystem::path& file)
-{
-    FILE* fp = kz_rp_compress_file(file.string().c_str());
-    if (!fp)
-    {
-        return false;
-    }
-    fclose(fp);
-    return true;
-}
-bool kz_rp_decompress_replay(const std::filesystem::path& file)
-{
-    FILE* fp = fopen(file.string().c_str(), "rb");
     if (!fp)
     {
         return false;
@@ -823,37 +542,69 @@ bool kz_rp_decompress_replay(const std::filesystem::path& file)
         return false;
     }
 
-    std::vector<uint8_t> src(static_cast<size_t>(size));
-    size_t read_bytes = fread(src.data(), 1, src.size(), fp);
+    out.resize(static_cast<size_t>(size));
+    size_t read_bytes = fread(out.data(), 1, out.size(), fp);
     fclose(fp);
 
-    if (read_bytes != src.size())
+    return (read_bytes == out.size());
+}
+static FILE* kz_rp_compress_file(const char* file)
+{
+    std::vector<uint8_t> src_buffer;
+    if (!kz_rp_read_file(file, src_buffer))
+    {
+        return nullptr;
+    }
+
+    const int c_level = static_cast<int>(kz_api_replays_clevel->value);
+
+    std::vector<uint8_t> dst_buffer;
+    const krp::error err = krp::compress(src_buffer, dst_buffer, c_level);
+    if (err != krp::error::ok)
+    {
+        kz_log(&g_replay_upload_log, "[KRP] Compression failed (%s): %s", krp::error_str(err), file);
+        return nullptr;
+    }
+
+    std::filesystem::path compressed_path(file);
+    compressed_path.replace_extension(KRP_EXT_COMPRESSED);
+
+    FILE* out_fp = fopen(compressed_path.string().c_str(), "wb+");
+    if (!out_fp)
+    {
+        return nullptr;
+    }
+
+    fwrite(dst_buffer.data(), 1, dst_buffer.size(), out_fp);
+    rewind(out_fp);
+    return out_fp;
+}
+bool kz_rp_compress_replay(const std::filesystem::path& file)
+{
+    FILE* fp = kz_rp_compress_file(file.string().c_str());
+    if (!fp)
+    {
+        return false;
+    }
+    fclose(fp);
+    return true;
+}
+bool kz_rp_decompress_replay(const std::filesystem::path& file)
+{
+    std::vector<uint8_t> src;
+    if (!kz_rp_read_file(file.string().c_str(), src))
     {
         return false;
     }
 
-    unsigned long long content_size = ZSTD_getFrameContentSize(src.data(), src.size());
-    if (content_size == ZSTD_CONTENTSIZE_ERROR || content_size == ZSTD_CONTENTSIZE_UNKNOWN || content_size > (256ULL * 1024 * 1024))
-    {
-        return false;
-    }
-
-    std::vector<uint8_t> d_buffer(static_cast<size_t>(content_size));
-    size_t d_size = ZSTD_decompress(d_buffer.data(), d_buffer.size(), src.data(), src.size());
-    if (ZSTD_isError(d_size))
-    {
-        return false;
-    }
-    d_buffer.resize(d_size);
-
-    std::vector<uint8_t> restored = kz_rp_restore_data(d_buffer);
-    if (restored.empty())
+    std::vector<uint8_t> restored;
+    if (krp::decompress(src, restored) != krp::error::ok)
     {
         return false;
     }
 
     std::filesystem::path out_path(file);
-    out_path.replace_extension(".krpr");
+    out_path.replace_extension(KRP_EXT_RAW);
 
     FILE* out_fp = fopen(out_path.string().c_str(), "wb");
     if (!out_fp)
