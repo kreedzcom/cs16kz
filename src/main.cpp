@@ -501,11 +501,12 @@ static void kz_api_cmd_usage()
     MF_PrintSrvConsole("  kz_api krp compress <file>                      - .krpr -> .krpz\n");
     MF_PrintSrvConsole("  kz_api krp decompress <file>                    - .krpz -> .krpr\n\n");
 
-    MF_PrintSrvConsole("  kz_api storage list <outgoing|upload> [n]       - first n rows; negative n = last n (default 10)\n");
+    MF_PrintSrvConsole("  kz_api storage checkpoint                       - force a WAL checkpoint (truncate)\n\n");
     MF_PrintSrvConsole("  kz_api storage requeue <id|all>                 - resend pending message(s) now\n");
+    MF_PrintSrvConsole("  kz_api storage list <outgoing|upload> [n]       - first n rows; negative n = last n (default 10)\n");
+    MF_PrintSrvConsole("  kz_api storage show <outgoing|upload> <id>      - print a row's full payload\n");
     MF_PrintSrvConsole("  kz_api storage delete <outgoing|upload> <id>\n");
     MF_PrintSrvConsole("  kz_api storage clear <outgoing|upload> confirm\n");
-    MF_PrintSrvConsole("  kz_api storage checkpoint                       - force a WAL checkpoint (truncate)\n\n");
 }
 void kz_api_cmd(void)
 {
@@ -735,6 +736,11 @@ void kz_api_cmd(void)
                 limit = 10;
             }
             kz_storage_print(table, limit, from_end);
+        }
+        else if (FStrEq(action, "show") && has_table && argc >= 5)
+        {
+            int64_t id = static_cast<int64_t>(atoll(CMD_ARGV(4)));
+            kz_storage_print_row(table, id);
         }
         else if (FStrEq(action, "requeue") && argc >= 4)
         {

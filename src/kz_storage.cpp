@@ -343,6 +343,24 @@ static const char* kz_storage_table_name(StorageTable table)
     }
     return "?";
 }
+static const char* kz_storage_msg_type_name(int64_t type)
+{
+    switch (type)
+    {
+        case WSMsgOut::HELLO:         return "hello";
+        case WSMsgOut::MAP_CHANGE:    return "map_change";
+        case WSMsgOut::PLAYER_JOIN:   return "player_join";
+        case WSMsgOut::PLAYER_LEAVE:  return "player_leave";
+        case WSMsgOut::WANT_MAP_INFO: return "want_map_info";
+        case WSMsgOut::ADD_RECORD:    return "add_record";
+    }
+    return "?";
+}
+static const char* kz_storage_msg_data(const char* text)
+{
+    const char* data = strstr(text, "\"data\"");
+    return (data ? data + 7 : text);
+}
 int64_t kz_storage_count(StorageTable table)
 {
     if (!kz_storage_database)
@@ -375,7 +393,8 @@ void kz_storage_print(StorageTable table, int limit, bool from_end)
     }
     try
     {
-        const char* payload = (table == StorageTable::outgoing_queue) ? "msg" : "local_uid";
+        const bool outgoing = (table == StorageTable::outgoing_queue);
+        const char* payload = outgoing ? "msg" : "local_uid";
 
         char statement[128];
         snprintf(statement, sizeof(statement), "SELECT id, msg_type, created_at, %s FROM %s ORDER BY id %s LIMIT ?", payload, kz_storage_table_name(table), from_end ? "DESC" : "ASC");
@@ -383,23 +402,94 @@ void kz_storage_print(StorageTable table, int limit, bool from_end)
         SQLite::Statement query(*kz_storage_database, statement);
         query.bind(1, limit);
 
-        MF_PrintSrvConsole("%-8s %-6s %-12s %s\n", "id", "type", "created_at", payload);
+        MF_PrintSrvConsole("%-8s %-14s %-12s %s\n", "id", outgoing ? "type" : "rec_id", "created_at", payload);
         while (query.executeStep())
         {
             char excerpt[101]; // keep console lines readable
-            snprintf(excerpt, sizeof(excerpt), "%s", query.getColumn(3).getText());
+            const char* text = query.getColumn(3).getText();
+            snprintf(excerpt, sizeof(excerpt), "%s", outgoing ? kz_storage_msg_data(text) : text);
 
-            MF_PrintSrvConsole("%-8lld %-6lld %-12lld %s\n",
-                static_cast<long long>(query.getColumn(0).getInt64()),
-                static_cast<long long>(query.getColumn(1).getInt64()),
-                static_cast<long long>(query.getColumn(2).getInt64()),
-                excerpt);
+            if (outgoing)
+            {
+                MF_PrintSrvConsole("%-8lld %-14s %-12lld %s\n",
+                    static_cast<long long>(query.getColumn(0).getInt64()),
+                    kz_storage_msg_type_name(query.getColumn(1).getInt64()),
+                    static_cast<long long>(query.getColumn(2).getInt64()),
+                    excerpt);
+            }
+            else
+            {
+                MF_PrintSrvConsole("%-8lld %-14lld %-12lld %s\n",
+                    static_cast<long long>(query.getColumn(0).getInt64()),
+                    static_cast<long long>(query.getColumn(1).getInt64()),
+                    static_cast<long long>(query.getColumn(2).getInt64()),
+                    excerpt);
+            }
         }
         MF_PrintSrvConsole("\n");
     }
     catch (const std::exception& e)
     {
         MF_PrintSrvConsole("[Storage] list failed: %s\n\n", e.what());
+    }
+}
+void kz_storage_print_row(StorageTable table, int64_t id)
+{
+    if (!kz_storage_database)
+    {
+        MF_PrintSrvConsole("[Storage] Database unavailable.\n\n");
+        return;
+    }
+    try
+    {
+        const char* payload = (table == StorageTable::outgoing_queue) ? "msg" : "local_uid";
+
+        char statement[128];
+        snprintf(statement, sizeof(statement), "SELECT id, msg_type, created_at, %s FROM %s WHERE id = ?", payload, kz_storage_table_name(table));
+
+        SQLite::Statement query(*kz_storage_database, statement);
+        query.bind(1, static_cast<long long>(id));
+
+        if (!query.executeStep())
+        {
+            MF_PrintSrvConsole("[Storage] No row with id %lld in %s.\n\n", static_cast<long long>(id), kz_storage_table_name(table));
+            return;
+        }
+
+        if (table == StorageTable::outgoing_queue)
+        {
+            MF_PrintSrvConsole("id: %lld, type: %s, created_at: %lld, %s:\n",
+                static_cast<long long>(query.getColumn(0).getInt64()),
+                kz_storage_msg_type_name(query.getColumn(1).getInt64()),
+                static_cast<long long>(query.getColumn(2).getInt64()),
+                payload);
+        }
+        else
+        {
+            MF_PrintSrvConsole("id: %lld, rec_id: %lld, created_at: %lld, %s:\n",
+                static_cast<long long>(query.getColumn(0).getInt64()),
+                static_cast<long long>(query.getColumn(1).getInt64()),
+                static_cast<long long>(query.getColumn(2).getInt64()),
+                payload);
+        }
+
+        // The engine print buffer clips long lines; emit the payload in chunks.
+        const char* text = query.getColumn(3).getText();
+        const size_t len = strlen(text);
+
+        char buffer[513];
+        for (size_t off = 0; off < len; off += (sizeof(buffer) - 1))
+        {
+            const size_t n = ((len - off) < (sizeof(buffer) - 1)) ? (len - off) : (sizeof(buffer) - 1);
+            memcpy(buffer, text + off, n);
+            buffer[n] = '\0';
+            MF_PrintSrvConsole("%s", buffer);
+        }
+        MF_PrintSrvConsole("\n\n");
+    }
+    catch (const std::exception& e)
+    {
+        MF_PrintSrvConsole("[Storage] show failed: %s\n\n", e.what());
     }
 }
 void kz_storage_delete_all(StorageTable table)

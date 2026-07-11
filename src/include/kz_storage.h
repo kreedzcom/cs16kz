@@ -37,6 +37,7 @@ extern void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTabl
 extern bool kz_storage_try_get_outgoing(int64_t msg_id, int64_t* msg_type_out, std::string* msg_out);
 extern int64_t kz_storage_count(StorageTable table);
 extern void kz_storage_print(StorageTable table, int limit, bool from_end);
+extern void kz_storage_print_row(StorageTable table, int64_t id);
 extern void kz_storage_delete_all(StorageTable table);
 extern bool kz_storage_checkpoint(void);
 #endif
