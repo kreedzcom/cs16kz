@@ -8,6 +8,8 @@
 #include "kz_storage.h"
 #include "kz_natives.h"
 
+extern bool g_initialized; // main.cpp; false = module disabled (no ReHLDS / gamedata hooks)
+
 map_info_t g_current_map_info;
 void kz_call_map_info_forward(int fwd, const char* map, const char* pro, const char* noob, int* map_props, size_t map_props_size)
 {
@@ -17,6 +19,15 @@ void kz_call_map_info_forward(int fwd, const char* map, const char* pro, const c
     MF_UnregisterSPForward(fwd);
 }
 
+static inline int validate_active(AMX* amx)
+{
+    if (!g_initialized)
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "KZ Global API module is disabled (no ReHLDS and no usable gamedata signatures)");
+        return 0;
+    }
+    return 1;
+}
 static inline int validate_params(AMX* amx, cell* params, int min_params)
 {
     int total_params = (params[0] / sizeof(cell));
@@ -55,7 +66,7 @@ static inline int validate_player(AMX* amx, int id)
 /* native kz_api_get_map_details(mapname[], handler[]); */
 static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 2))
+    if (!validate_active(amx) || !validate_params(amx, params, 2))
     {
         return 0;
     }
@@ -97,7 +108,7 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
 /* native kz_api_run_started(id) */
 static cell AMX_NATIVE_CALL kz_api_run_started(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 1))
+    if (!validate_active(amx) || !validate_params(amx, params, 1))
     {
         return 0;
     }
@@ -109,7 +120,7 @@ static cell AMX_NATIVE_CALL kz_api_run_started(AMX* amx, cell* params)
 /* native kz_api_run_checkpoint(id) */
 static cell AMX_NATIVE_CALL kz_api_run_checkpoint(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 1))
+    if (!validate_active(amx) || !validate_params(amx, params, 1))
     {
         return 0;
     }
@@ -121,7 +132,7 @@ static cell AMX_NATIVE_CALL kz_api_run_checkpoint(AMX* amx, cell* params)
 /* native kz_api_run_gocheck(id) */
 static cell AMX_NATIVE_CALL kz_api_run_gocheck(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 1))
+    if (!validate_active(amx) || !validate_params(amx, params, 1))
     {
         return 0;
     }
@@ -133,7 +144,7 @@ static cell AMX_NATIVE_CALL kz_api_run_gocheck(AMX* amx, cell* params)
 /* native kz_api_run_paused(id) */
 static cell AMX_NATIVE_CALL kz_api_run_paused(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 1))
+    if (!validate_active(amx) || !validate_params(amx, params, 1))
     {
         return 0;
     }
@@ -145,7 +156,7 @@ static cell AMX_NATIVE_CALL kz_api_run_paused(AMX* amx, cell* params)
 /* native kz_api_run_unpaused(id) */
 static cell AMX_NATIVE_CALL kz_api_run_unpaused(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 1))
+    if (!validate_active(amx) || !validate_params(amx, params, 1))
     {
         return 0;
     }
@@ -157,7 +168,7 @@ static cell AMX_NATIVE_CALL kz_api_run_unpaused(AMX* amx, cell* params)
 /* native kz_api_run_rejected(id, bool:delete_file) */
 static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 2))
+    if (!validate_active(amx) || !validate_params(amx, params, 2))
     {
         return 0;
     }
@@ -184,7 +195,7 @@ static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
 /* native kz_api_run_finished(id, Float:time) */
 static cell AMX_NATIVE_CALL kz_api_run_finished(AMX* amx, cell* params)
 {
-    if (!validate_params(amx, params, 2))
+    if (!validate_active(amx) || !validate_params(amx, params, 2))
     {
         return 0;
     }

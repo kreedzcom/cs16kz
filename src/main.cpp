@@ -25,6 +25,7 @@ player_t g_players[33];
 
 int g_msg_teaminfo = -1;
 bool g_initialized = false;
+bool g_module_disabled = false;
 bool g_early_mapchange = false;
 float g_wait_after_load = 0.0f;
 
@@ -86,9 +87,15 @@ void FN_AMXX_PLUGINSLOADED()
 
     if (!g_initialized)
     {
+        if (g_module_disabled)
+        {
+            return;
+        }
         if (!kz_init_rehooks() && !kz_init_detours())
         {
-            MF_Log("ERROR: Failed to install one or multiple hooks. Some features might be disabled.");
+            g_module_disabled = true;
+            MF_Log("ERROR: Could not hook the engine (Cvar_DirectSet / SV_DropClient) - the module is DISABLED.");
+            MF_Log("ERROR: Install ReHLDS, or add signatures for both functions to the common.games gamedata.");
             return;
         }
         g_initialized = true;
@@ -165,8 +172,10 @@ void FN_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax)
 void FN_ServerDeactivate_Post(void)
 {
     g_pEdicts = nullptr;
-    kz_pb_server_deactivate_post();
-
+    if (g_initialized)
+    {
+        kz_pb_server_deactivate_post();
+    }
     RETURN_META(MRES_IGNORED);
 }
 void FN_DispatchKeyValue(edict_t* pentKeyvalue, KeyValueData* pkvd)
@@ -183,33 +192,47 @@ int FN_DispatchSpawn(edict_t* pent)
     {
         g_pEdicts = (*g_engfuncs.pfnPEntityOfEntIndex)(0);
     }
-    kz_pb_spawn(pent);
+    if (g_initialized)
+    {
+        kz_pb_spawn(pent);
+    }
     RETURN_META_VALUE(MRES_IGNORED, FALSE);
 }
 void FN_DispatchThink(edict_t* pent)
 {
-    kz_pb_think(pent);
+    if (g_initialized)
+    {
+        kz_pb_think(pent);
+    }
     RETURN_META(MRES_IGNORED);
 }
 int FN_AddToFullPack(struct entity_state_s *state, int e, edict_t *ent, edict_t *host, int hostflags, int player, unsigned char *pSet)
 {
-    kz_pb_addtofullpack(state, e, ent, host, hostflags, player, pSet);
+    if (g_initialized)
+    {
+        kz_pb_addtofullpack(state, e, ent, host, hostflags, player, pSet);
+    }
     RETURN_META_VALUE(MRES_IGNORED, 0);
 }
 int FN_CheckVisibility(const edict_t *entity, unsigned char *pset)
 {
-    int ret = kz_pb_check_visibility(entity, pset);
-    if (ret != -1)
+    if (g_initialized)
     {
-        return(ret);
+        int ret = kz_pb_check_visibility(entity, pset);
+        if (ret != -1)
+        {
+            return(ret);
+        }
     }
     RETURN_META_VALUE(MRES_IGNORED, 0);
 }
 void FN_ChangeLevel(const char *s1, const char *s2)
 {
     g_early_mapchange = true;
-    kz_storage_clear();
-
+    if (g_initialized)
+    {
+        kz_storage_clear();
+    }
     RETURN_META(MRES_IGNORED);
 }
 void FN_MessageBegin(int msg_dest, int msg_type, const float *pOrigin, edict_t *ed)
@@ -217,20 +240,30 @@ void FN_MessageBegin(int msg_dest, int msg_type, const float *pOrigin, edict_t *
     if(msg_type == SVC_INTERMISSION)
     {
         g_early_mapchange = true;
-        kz_storage_clear();
+        if (g_initialized)
+        {
+            kz_storage_clear();
+        }
     }
     RETURN_META(MRES_IGNORED);
 }
 
 void FN_CvarValue2(const edict_t* pEdict, int requestId, const char* cvar, const char* value)
 {
-    kz_ac_querycvar_result(pEdict, requestId, cvar, value);
+    if (g_initialized)
+    {
+        kz_ac_querycvar_result(pEdict, requestId, cvar, value);
+    }
     RETURN_META(MRES_IGNORED);
 }
 /***************************************************************************************************************/
 /***************************************************************************************************************/
 void FN_CmdStart(const edict_t* player, const struct usercmd_s* cmd, unsigned int random_seed)
 {
+    if (!g_initialized)
+    {
+        RETURN_META(MRES_IGNORED);
+    }
     int id = indexOfEdict(player);
     if (!MF_IsPlayerBot(id) && MF_IsPlayerAlive(id))
     {
@@ -241,6 +274,10 @@ void FN_CmdStart(const edict_t* player, const struct usercmd_s* cmd, unsigned in
 }
 void FN_PlayerPostThink(edict_t* pEntity)
 {
+    if (!g_initialized)
+    {
+        RETURN_META(MRES_IGNORED);
+    }
     int id = indexOfEdict(pEntity);
     if (!MF_IsPlayerBot(id) && MF_IsPlayerAlive(id))
     {
@@ -252,9 +289,11 @@ void FN_PlayerPostThink(edict_t* pEntity)
 }
 BOOL FN_ClientConnect_Post(edict_t *pEntity, const char *pszName, const char *pszAddress, char szRejectReason[ 128 ])
 {
-    int id = indexOfEdict(pEntity);
-    kz_ac_connect(id, pEntity);
-
+    if (g_initialized)
+    {
+        int id = indexOfEdict(pEntity);
+        kz_ac_connect(id, pEntity);
+    }
     RETURN_META_VALUE(MRES_IGNORED, TRUE);
 }
 void FN_ClientPutInServer_Post(edict_t* pEntity)
@@ -262,7 +301,7 @@ void FN_ClientPutInServer_Post(edict_t* pEntity)
     int id = ENTINDEX(pEntity);
     g_players[id].is_bot = MF_IsPlayerBot(id);
 
-    if (!g_players[id].is_bot)
+    if (g_initialized && !g_players[id].is_bot)
     {
         for(size_t i = 0; i < g_player_cvars_size; ++i)
         {
@@ -412,22 +451,38 @@ bool kz_init_detours(void)
     /* Cvar_DirectSet */
     if (!CommonConfig->GetMemSig("Cvar_DirectSet", &address) || !address)
     {
-        MF_Log("ERROR: Failed to find \"Cvar_DirectSet\" function. Server cvar enforcement will not work");
+        MF_Log("ERROR: Failed to find \"Cvar_DirectSet\" function.");
         return false;
     }
 
     g_detour_Cvar_DirectSet = CDetourManager::CreateDetour((void*)&DT_Cvar_DirectSet, (void**)&Cvar_DirectSet_Actual, address);
+    if (!g_detour_Cvar_DirectSet)
+    {
+        MF_Log("ERROR: Failed to create \"Cvar_DirectSet\" detour");
+        return false;
+    }
     g_detour_Cvar_DirectSet->EnableDetour();
 
     /* SV_DropClient */
     address = nullptr;
     if (!CommonConfig->GetMemSig("SV_DropClient", &address) || !address)
     {
-        MF_Log("ERROR: Failed to find \"SV_DropClient\" function. PLAYER_LEAVE event will not work");
+        MF_Log("ERROR: Failed to find \"SV_DropClient\" function.");
+
+        g_detour_Cvar_DirectSet->DisableDetour();
+        g_detour_Cvar_DirectSet = nullptr;
         return false;
     }
 
     g_detour_SV_DropClient = CDetourManager::CreateDetour((void*)&DT_SV_DropClient, (void**)&SV_DropClient_Actual, address);
+    if (!g_detour_SV_DropClient)
+    {
+        MF_Log("ERROR: Failed to create \"SV_DropClient\" detour");
+
+        g_detour_Cvar_DirectSet->DisableDetour();
+        g_detour_Cvar_DirectSet = nullptr;
+        return false;
+    }
     g_detour_SV_DropClient->EnableDetour();
     return true;
 }
@@ -455,6 +510,19 @@ static void kz_api_cmd_usage()
 void kz_api_cmd(void)
 {
     const int argc = CMD_ARGC();
+
+    if (argc >= 2 && FStrEq(CMD_ARGV(1), "version"))
+    {
+        MF_PrintSrvConsole("[%s] version:  %s\n", MODULE_LOGTAG, MODULE_VERSION);
+        MF_PrintSrvConsole("[%s] checksum: %s\n\n", MODULE_LOGTAG, MODULE_CHECKSUM);
+        return;
+    }
+
+    if (!g_initialized)
+    {
+        MF_PrintSrvConsole("[%s] Module is DISABLED: could not hook the engine (no ReHLDS and no usable gamedata signatures).\n", MODULE_LOGTAG);
+        return;
+    }
     if (argc < 2)
     {
         kz_api_cmd_usage();
