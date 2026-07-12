@@ -116,10 +116,12 @@ Live capture is driven by signals pushed onto the writer queue (`KRP_SIGNAL_*`):
 On finish the file is renamed to:
 
 ```
-<gochecks:06>_<time_ms:08>_<steamid_short>_<timestamp_base36>.krpr
+<class:1>_<time_ms:08>_<steamid_short>_<timestamp_base36>.krpr
 ```
 
-where `gochecks` is the teleport count (zero-padded to 6 digits), `time_ms` is the run time in milliseconds (zero-padded to 8 digits), `steamid_short` is the compact SteamID, and `timestamp_base36` is the start timestamp in base-36. Zero-padding gochecks first and time second makes lexicographic sort equal to fewest-gochecks-then-fastest — which is how playback picks the map's SR replay (a 0-gocheck pro run always outranks a faster run with teleports).
+where `class` is a single **run-class flag** — `0` for a PRO run (0 gochecks), `1` for a NUB run (≥1 gocheck) — `time_ms` is the run time in milliseconds (zero-padded to 8 digits), `steamid_short` is the compact SteamID, and `timestamp_base36` is the start timestamp in base-36. The exact gocheck count is **not** in the filename; it lives in the header (`run.teleports`).
+
+Putting the class flag first and the zero-padded time second makes a plain lexicographic sort equal to **PRO-before-NUB, then fastest time** — which is how playback picks the map's SR replay (a pro run always outranks any nub run, and within a class the faster time wins; gocheck count is never a tiebreaker). Selection (`kz_pb_find_fastest`) and pruning (`kz_rp_prune_replays`) both rely on this ordering, so the field order and widths must stay stable.
 
 ---
 
@@ -169,7 +171,7 @@ Compression runs on the upload thread; if a queued file is already `.krpz` it is
 
 The parser keeps only a reduced per-frame struct for the SR bot, `krp_playback_frame`: `origin` (`v3f`), `v_angle` (`v3f`), `flags`, `button`, `oldbuttons`. Everything else in `krp_frame` is decoded but discarded. The bot interpolates position between consecutive frames, derives velocity, and picks animation gaitsequences from the flags/buttons.
 
-The run time and the `MM:SS.cc` timer string are parsed from the **filename** (the 8-digit millisecond field after the 6-digit gochecks prefix, i.e. bytes 7–14), not from the frame data.
+The run time and the `MM:SS.cc` timer string are parsed from the **filename** — the 8-digit millisecond field, i.e. the second `_`-delimited token at bytes 2–9 (right after the 1-char class flag and its underscore) — not from the frame data.
 
 ---
 

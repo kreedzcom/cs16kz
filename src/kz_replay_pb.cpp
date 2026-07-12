@@ -534,13 +534,13 @@ void kz_pb_parser_thread(void)
 
                         pb_data.filepath = std::filesystem::path(*file);
                         std::string filename = file->filename().string();
-                        if (filename.size() < 8)
+                        if (filename.size() < 10)
                         {
                             kz_log(&g_pb_parse_log, "[PARSE] Filename too short to extract time: %s", filename.c_str());
                             g_pb_parse_queue.pop();
                             continue;
                         }
-                        std::string ms_str = filename.substr(7, 8);
+                        std::string ms_str = filename.substr(2, 8);
                         uint32_t ms_total = 0;
                         try
                         {
