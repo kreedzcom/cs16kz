@@ -197,16 +197,16 @@ static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
     }
     return kz_rp_run_rejected(id, static_cast<bool>(params[2]));
 }
-/* native kz_api_run_finished(id, Float:time) */
+/* native kz_api_run_finished(id, Float:time, bool submit_run, char_prefix) */
 static cell AMX_NATIVE_CALL kz_api_run_finished(AMX* amx, cell* params)
 {
-    if (!validate_active(amx) || !validate_params(amx, params, 2))
+    if (!validate_active(amx) || !validate_params(amx, params, 4))
     {
         return 0;
     }
 
     int id = validate_player(amx, params[1]);
-    return (id ? kz_rp_run_finished(id, amx_ctof(params[2])) : 0);
+    return (id ? kz_rp_run_finished(id, amx_ctof(params[2]), static_cast<bool>(params[3]), static_cast<uint8_t>(params[4])) : 0);
 }
 
 static cell AMX_NATIVE_CALL kz_api_del_record(AMX* amx, cell* params)

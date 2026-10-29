@@ -74,12 +74,12 @@ stock kz_api_get_map_type(type, output[], maxlen)
 {
 	switch(type)
 	{
-		case KZM_BHOP:    { formatex(output, maxlen, "Bhop"); break; }
-		case KZM_CLIMB:   { formatex(output, maxlen, "Climb"); break; }
-		case KZM_SLIDE:   { formatex(output, maxlen, "Slide"); break; }
-		case KZM_MIX:     { formatex(output, maxlen, "Mix"); break; }
-		case KZM_SPECIAL: { formatex(output, maxlen, "Special"); break; }
-		default:          { formatex(output, maxlen, "Unknown"); break; }
+		case KZM_BHOP:    { formatex(output, maxlen, "Bhop"); }
+		case KZM_CLIMB:   { formatex(output, maxlen, "Climb"); }
+		case KZM_SLIDE:   { formatex(output, maxlen, "Slide"); }
+		case KZM_MIX:     { formatex(output, maxlen, "Mix"); }
+		case KZM_SPECIAL: { formatex(output, maxlen, "Special"); }
+		default:          { formatex(output, maxlen, "Unknown"); }
 	}
 	return 0;
 }
@@ -97,12 +97,12 @@ stock kz_api_get_map_length(length, output[], maxlen)
 {
 	switch(length)
 	{
-		case KZM_VERY_SHORT: { formatex(output, maxlen, "Very Short"); break; }
-		case KZM_SHORT:      { formatex(output, maxlen, "Short"); break; }
-		case KZM_MIDDLE:     { formatex(output, maxlen, "Middle"); break; }
-		case KZM_LONG:       { formatex(output, maxlen, "Long"); break; }
-		case KZM_VERY_LONG:  { formatex(output, maxlen, "Very Long"); break; }
-		default:             { formatex(output, maxlen, "Unknown"); break; }
+		case KZM_VERY_SHORT: { formatex(output, maxlen, "Very Short"); }
+		case KZM_SHORT:      { formatex(output, maxlen, "Short"); }
+		case KZM_MIDDLE:     { formatex(output, maxlen, "Middle"); }
+		case KZM_LONG:       { formatex(output, maxlen, "Long"); }
+		case KZM_VERY_LONG:  { formatex(output, maxlen, "Very Long"); }
+		default:             { formatex(output, maxlen, "Unknown"); }
 	}
 	return 0;
 }
@@ -120,17 +120,17 @@ stock kz_api_get_map_difficulty(difficulty, output[], maxlen)
 {
 	switch(difficulty)
 	{
-		case KZM_BEGINNER:      { formatex(output, maxlen, "Beginner"); break; }
-		case KZM_EASY:          { formatex(output, maxlen, "Easy"); break; }
-		case KZM_EASY_MEDIUM:   { formatex(output, maxlen, "Easy-Medium"); break; }
-		case KZM_MEDIUM:        { formatex(output, maxlen, "Medium"); break; }
-		case KZM_MEDIUM_HARD:   { formatex(output, maxlen, "Medium-Hard"); break; }
-		case KZM_HARD:          { formatex(output, maxlen, "Hard"); break; }
-		case KZM_HARD_EXTREME:  { formatex(output, maxlen, "Hard-Extreme"); break; }
-		case KZM_EXTREME:       { formatex(output, maxlen, "Extreme"); break; }
-		case KZM_EXTREME_DEATH: { formatex(output, maxlen, "Extreme-Death"); break; }
-		case KZM_DEATH:         { formatex(output, maxlen, "Death"); break; }
-		default:                { formatex(output, maxlen, "Unknown"); break; }
+		case KZM_BEGINNER:      { formatex(output, maxlen, "Beginner"); }
+		case KZM_EASY:          { formatex(output, maxlen, "Easy"); }
+		case KZM_EASY_MEDIUM:   { formatex(output, maxlen, "Easy-Medium"); }
+		case KZM_MEDIUM:        { formatex(output, maxlen, "Medium"); }
+		case KZM_MEDIUM_HARD:   { formatex(output, maxlen, "Medium-Hard"); }
+		case KZM_HARD:          { formatex(output, maxlen, "Hard"); }
+		case KZM_HARD_EXTREME:  { formatex(output, maxlen, "Hard-Extreme"); }
+		case KZM_EXTREME:       { formatex(output, maxlen, "Extreme"); }
+		case KZM_EXTREME_DEATH: { formatex(output, maxlen, "Extreme-Death"); }
+		case KZM_DEATH:         { formatex(output, maxlen, "Death"); }
+		default:                { formatex(output, maxlen, "Unknown"); }
 	}
 	return 0;
 }

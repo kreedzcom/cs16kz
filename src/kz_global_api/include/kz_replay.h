@@ -27,6 +27,8 @@ typedef struct  {
         uint64_t ts;
         uint8_t event;
     };
+    bool submit;
+    uint8_t prefix;
 } krp_signal;
 
 typedef struct {
@@ -84,7 +86,7 @@ extern int kz_rp_run_gocheck(int id);
 extern int kz_rp_run_paused(int id);
 extern int kz_rp_run_unpaused(int id);
 extern int kz_rp_run_rejected(int id, bool delete_file);
-extern int kz_rp_run_finished(int id, float time);
+extern int kz_rp_run_finished(int id, float time, bool submit_run, uint8_t char_prefix);
 
 extern void kz_rp_init(void);
 extern void kz_rp_uninit(void);

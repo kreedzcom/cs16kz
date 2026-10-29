@@ -27,19 +27,25 @@ std::atomic<bool> g_krp_running;
 
 kz::queue<log_entry> g_replay_writer_log(64);
 kz::queue<log_entry> g_replay_upload_log(64);
+kz::queue<log_entry> g_replay_compress_log(64);
 
 kz::queue<krp_packet> g_replay_writer_queue(4096); // (32 players * 100 fps each = 3096 + some additonal room)
 kz::queue<ws_upload> g_replay_upload_queue(64);
+kz::queue<std::filesystem::path> g_replay_compress_queue(32);
 
 std::mutex g_replay_writer_mtx;
 std::mutex g_replay_upload_mtx;
+std::mutex g_replay_compress_mtx;
 std::condition_variable g_replay_writer_cv;
 std::condition_variable g_replay_upload_cv;
+std::condition_variable g_replay_compress_cv;
 
 static std::thread g_replay_writer_thread;
 static std::thread g_replay_upload_thread;
+static std::thread g_replay_compress_thread;
 static void kz_rp_writer_thread(void);
 static void kz_rp_upload_thread(void);
+static void kz_rp_compress_thread(void);
 
 #define CHUNK_SIZE (64*1024) // 64KB
 
@@ -158,7 +164,7 @@ int kz_rp_run_rejected(int id, bool delete_file)
     return 1;
 }
 
-int kz_rp_run_finished(int id, float time)
+int kz_rp_run_finished(int id, float time, bool submit_run, uint8_t char_prefix)
 {
     krp_packet item = {};
     item.player_index = id;
@@ -166,6 +172,8 @@ int kz_rp_run_finished(int id, float time)
 
     krp_signal* sig = reinterpret_cast<krp_signal*>(item.data);
     sig->time = time;
+    sig->submit = submit_run;
+    sig->prefix = char_prefix;
     snprintf(sig->steamid_short, sizeof(sig->steamid_short), "%s", g_players[id].steamid_short);
     snprintf(sig->nickname, sizeof(sig->nickname), "%s", g_players[id].nickname);
 
@@ -183,10 +191,12 @@ void kz_rp_init(void)
 {
     kz_log_addq(&g_replay_writer_log);
     kz_log_addq(&g_replay_upload_log);
+    kz_log_addq(&g_replay_compress_log);
     g_krp_running.store(true);
 
-    g_replay_writer_thread = std::thread(kz_rp_writer_thread);
-    g_replay_upload_thread = std::thread(kz_rp_upload_thread);
+    g_replay_writer_thread   = std::thread(kz_rp_writer_thread);
+    g_replay_upload_thread   = std::thread(kz_rp_upload_thread);
+    g_replay_compress_thread = std::thread(kz_rp_compress_thread);
 }
 krp_header kz_rp_get_header(void)
 {
@@ -286,9 +296,11 @@ void kz_rp_uninit()
 
     g_replay_writer_cv.notify_all();
     g_replay_upload_cv.notify_all();
+    g_replay_compress_cv.notify_all();
 
     g_replay_writer_thread.join();
     g_replay_upload_thread.join();
+    g_replay_compress_thread.join();
 }
 void kz_rp_set_cmd(int id, const usercmd_t* cmd)
 {
@@ -825,8 +837,13 @@ static void kz_rp_writer_thread(void)
                         to_base36(kz_rp_timestamp_from_header(s_fd[id]), ts_str, sizeof(ts_str));
                         snprintf(uid_str, sizeof(uid_str), "%d_%08u_%s_%s", (s_gochecks[id] > 0 ? 1:0), static_cast<uint32_t>(sig->time * 1000.0f), sig->steamid_short, ts_str);
 
+                        if (sig->prefix > 0)
+                        {
+                            uid_str[0] = (char)sig->prefix;
+                        }
+
                         std::filesystem::path npath = g_data_dir / "kz_global" / "replays" / uid_str;
-                        npath.replace_extension(".krpr");
+                        npath.replace_extension(KRP_EXT_RAW);
                         snprintf(new_path, sizeof(new_path), "%s", npath.string().c_str());
 
                         fseek(s_fd[id], 0, SEEK_SET);
@@ -857,8 +874,18 @@ static void kz_rp_writer_thread(void)
                             kz_log(&g_replay_writer_log, "[KRP] ERROR: Rename failed (%s)", strerror(errno));
                             break;
                         }
+                        if (!sig->submit || g_players[id].no_submit.load(std::memory_order_relaxed))
+                        {
+                            // Records that don't go through the submission process don't have a lazy compression which is during upload
+                            // kz_rp_prune_replays() goes through only replays/<map> directories. Files that are not compressed - live outside the map directory and await upload
 
-                        if (!g_players[id].no_submit.load(std::memory_order_relaxed))
+                            if (!g_replay_compress_queue.try_push(npath))
+                            {
+                                kz_log(&g_replay_writer_log, "[KRP] The queue is full");
+                            }
+                            g_replay_compress_cv.notify_one();
+                        }
+                        else
                         {
                             JSON_Value* data_val = json_value_init_object();
                             JSON_Object* data_obj = json_value_get_object(data_val);
@@ -914,7 +941,7 @@ static void kz_rp_upload_thread(void)
             std::filesystem::path pathname = item->filepath;
             FILE* fp = nullptr;
 
-            if (pathname.extension() == ".krpz")
+            if (pathname.extension() == KRP_EXT_COMPRESSED)
             {
                 fp = fopen(pathname.string().c_str(), "rb");
             }
@@ -990,6 +1017,63 @@ static void kz_rp_upload_thread(void)
         {
             std::unique_lock<std::mutex> lock(g_replay_upload_mtx);
             g_replay_upload_cv.wait(lock, []{ return (!g_replay_upload_queue.empty() || !g_krp_running.load()); });
+        }
+    }
+}
+static void kz_rp_compress_thread(void)
+{
+    while (g_krp_running.load() || !g_replay_compress_queue.empty())
+    {
+        while (std::filesystem::path* item = g_replay_compress_queue.front())
+        {
+            std::filesystem::path src = *item;
+            g_replay_compress_queue.pop();
+
+            FILE* fp = kz_rp_compress_file(src.string().c_str());
+            if (!fp)
+            {
+                kz_log(&g_replay_compress_log, "[COMPRESS] Failed to compress: %s", src.filename().string().c_str());
+                continue;
+            }
+            fclose(fp);
+
+            fp = fopen(src.string().c_str(), "rb");
+            if (!fp)
+            {
+                kz_log(&g_replay_compress_log, "[COMPRESS] fopen failure: %s", strerror(errno));
+                continue;
+            }
+
+            std::string mapname = kz_rp_mapname_from_header(fp);
+            fclose(fp);
+
+            if (mapname.empty())
+            {
+                kz_log(&g_replay_compress_log, "[COMPRESS] No map name in header: %s", src.filename().string().c_str());
+                continue;
+            }
+
+            std::filesystem::path compressed = src;
+            compressed.replace_extension(KRP_EXT_COMPRESSED);
+
+            std::filesystem::path dst = g_data_dir / "kz_global" / "replays" / mapname / compressed.filename();
+            std::error_code ec;
+            std::filesystem::create_directories(dst.parent_path(), ec);
+
+            if (!ec)
+            {
+                std::filesystem::rename(compressed, dst, ec);
+            }
+            if (ec)
+            {
+                kz_log(&g_replay_compress_log, "[COMPRESS] Move failed (%s): %s", ec.message().c_str(), compressed.filename().string().c_str());
+                continue;
+            }
+            std::filesystem::remove(src, ec);
+        }
+        {
+            std::unique_lock<std::mutex> lock(g_replay_compress_mtx);
+            g_replay_compress_cv.wait_for(lock, std::chrono::seconds(1), []{ return !g_replay_compress_queue.empty() || !g_krp_running.load(); });
         }
     }
 }
