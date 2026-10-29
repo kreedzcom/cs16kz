@@ -58,6 +58,7 @@ cvar_t* kz_api_replays_clevel = nullptr;
 cvar_t* kz_api_replays_max = nullptr;
 cvar_t* kz_api_replays_parse = nullptr;
 cvar_t* kz_api_replays_download = nullptr;
+cvar_t* kz_api_replays_prune_trigger = nullptr;
 
 cvar_t* kz_api_bot_prefix = nullptr;
 cvar_t* kz_api_bot_team = nullptr;

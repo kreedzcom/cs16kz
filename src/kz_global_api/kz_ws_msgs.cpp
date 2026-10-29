@@ -1070,7 +1070,10 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             std::filesystem::remove(raw_path, ec);
             file_moved = true;
 
-            kz_rp_prune_replays(mapname.c_str(), &g_ws_log);
+            if (!kz_api_replays_prune_trigger || !kz_api_replays_prune_trigger->value)
+            {
+                kz_rp_prune_replays(mapname.c_str(), &g_ws_log);
+            }
         }
 
         cleanup();

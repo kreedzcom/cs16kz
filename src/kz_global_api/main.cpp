@@ -71,12 +71,13 @@ void FN_AMXX_ATTACH()
     kz_api_log_parse  = register_cvar("kz_api_log_parse",  "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_log_mode   = register_cvar("kz_api_log_mode",   "1", FCVAR_EXTDLL | FCVAR_SPONLY);
 
-    kz_api_retries_max      = register_cvar("kz_api_retries_max",      "4",  FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_retries_delay    = register_cvar("kz_api_retries_delay",    "5",  FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_replays_clevel   = register_cvar("kz_api_replays_clevel",   "10", FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_replays_max      = register_cvar("kz_api_replays_max",      "-1", FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_replays_parse    = register_cvar("kz_api_replays_parse",    "1",  FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_replays_download = register_cvar("kz_api_replays_download", "1",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_retries_max           = register_cvar("kz_api_retries_max",           "4",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_retries_delay         = register_cvar("kz_api_retries_delay",         "5",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_clevel        = register_cvar("kz_api_replays_clevel",        "10", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_max           = register_cvar("kz_api_replays_max",           "-1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_parse         = register_cvar("kz_api_replays_parse",         "1",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_download      = register_cvar("kz_api_replays_download",      "1",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_prune_trigger = register_cvar("kz_api_replays_prune_trigger", "0", FCVAR_EXTDLL | FCVAR_SPONLY);
 
     kz_api_bot_prefix  = register_cvar("kz_api_bot_prefix", "[SR]", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_bot_team    = register_cvar("kz_api_bot_team",    "1", FCVAR_EXTDLL | FCVAR_SPONLY);
@@ -246,6 +247,10 @@ void FN_ChangeLevel(const char *s1, const char *s2)
     g_early_mapchange = true;
     if (g_initialized)
     {
+        if (kz_api_replays_prune_trigger && kz_api_replays_prune_trigger->value == 1)
+        {
+            kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr);
+        }
         kz_storage_clear();
     }
     RETURN_META(MRES_IGNORED);
@@ -257,6 +262,10 @@ void FN_MessageBegin(int msg_dest, int msg_type, const float *pOrigin, edict_t *
         g_early_mapchange = true;
         if (g_initialized)
         {
+            if (kz_api_replays_prune_trigger && kz_api_replays_prune_trigger->value == 1)
+            {
+                kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr);
+            }
             kz_storage_clear();
         }
     }
