@@ -247,10 +247,7 @@ void FN_ChangeLevel(const char *s1, const char *s2)
     g_early_mapchange = true;
     if (g_initialized)
     {
-        if (kz_api_replays_prune_trigger && kz_api_replays_prune_trigger->value == 1)
-        {
-            kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr);
-        }
+        kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr);
         kz_storage_clear();
     }
     RETURN_META(MRES_IGNORED);
@@ -262,10 +259,7 @@ void FN_MessageBegin(int msg_dest, int msg_type, const float *pOrigin, edict_t *
         g_early_mapchange = true;
         if (g_initialized)
         {
-            if (kz_api_replays_prune_trigger && kz_api_replays_prune_trigger->value == 1)
-            {
-                kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr);
-            }
+            kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr);
             kz_storage_clear();
         }
     }
