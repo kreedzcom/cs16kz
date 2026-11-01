@@ -843,6 +843,13 @@ static void kz_rp_writer_thread(void)
                         to_base36(kz_rp_timestamp_from_header(s_fd[id]), ts_str, sizeof(ts_str));
                         snprintf(uid_str, sizeof(uid_str), "%d_%08u_%s_%s", (s_gochecks[id] > 0 ? 1:0), static_cast<uint32_t>(sig->time * 1000.0f), sig->steamid_short, ts_str);
 
+                        // true when a player is globally banned per kz_api_ban_action (value 3)
+                        bool no_submit = g_players[id].no_submit.load(std::memory_order_relaxed);
+
+                        if (no_submit)
+                        {
+                            uid_str[0] = 'x';
+                        }
                         if (sig->prefix > 0)
                         {
                             uid_str[0] = (char)sig->prefix;
@@ -880,7 +887,7 @@ static void kz_rp_writer_thread(void)
                             kz_log(&g_replay_writer_log, "[KRP] ERROR: Rename failed (%s)", strerror(errno));
                             break;
                         }
-                        if (!sig->submit || g_players[id].no_submit.load(std::memory_order_relaxed))
+                        if (!sig->submit || no_submit)
                         {
                             // Records that don't go through the submission process don't have a lazy compression which is during upload
                             // kz_rp_prune_replays() goes through only replays/<map> directories. Files that are not compressed - live outside the map directory and await upload
