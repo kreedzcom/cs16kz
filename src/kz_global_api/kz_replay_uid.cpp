@@ -25,7 +25,7 @@ bool kz_replay_parse_uid(const std::string& filename, uint8_t& run_class, uint32
     char* end = nullptr;
     const std::string class_str = stem.substr(0, sep1);
     const long cls = strtol(class_str.c_str(), &end, 10);
-    if (!end || *end != '\0' || cls < 0 || cls > 1)
+    if (!end || *end != '\0' || cls < 0 || cls > 9)
     {
         return false;
     }
