@@ -35,8 +35,11 @@ int run_replay_uid_tests(void)
     expect(run_class == 1);
     expect(time_ms == 100000000U);
 
+    expect(kz_replay_parse_uid("9_00012345_steam_abc.krpz", run_class, time_ms));
+    expect(run_class == 9);
+
     expect(!kz_replay_parse_uid("bad.krpz", run_class, time_ms));
-    expect(!kz_replay_parse_uid("2_00012345_steam_abc.krpz", run_class, time_ms));
+    expect(!kz_replay_parse_uid("10_00012345_steam_abc.krpz", run_class, time_ms));
     expect(!kz_replay_parse_uid("", run_class, time_ms));
 
     expect(kz_replay_uid_is_better(0, 99999U, 1, 1U));
