@@ -386,6 +386,11 @@ void KZ_Cvar_DirectSet(cvar_t* var, const char* const value, IRehldsHook_Cvar_Di
 }
 void KZ_SV_DropClient(edict_t* client)
 {
+    // edict can be null when a client is dropped before it's assigned (e.g. reauthcheck).
+    if (!client)
+    {
+        return;
+    }
     int id = indexOfEdict(client);
     if (id <= 0 || id > gpGlobals->maxClients)
     {
