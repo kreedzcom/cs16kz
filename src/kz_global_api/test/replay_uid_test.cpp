@@ -40,7 +40,16 @@ int run_replay_uid_tests(void)
 
     expect(!kz_replay_parse_uid("bad.krpz", run_class, time_ms));
     expect(!kz_replay_parse_uid("10_00012345_steam_abc.krpz", run_class, time_ms));
+    expect(!kz_replay_parse_uid("x_00012345_steam_abc.krpz", run_class, time_ms));
     expect(!kz_replay_parse_uid("", run_class, time_ms));
+
+    expect(kz_replay_filename_prefix(0) == 0);
+    expect(kz_replay_filename_prefix(static_cast<uint8_t>('a')) == static_cast<uint8_t>('a'));
+    expect(kz_replay_filename_prefix(static_cast<uint8_t>('Z')) == static_cast<uint8_t>('Z'));
+    expect(kz_replay_filename_prefix(static_cast<uint8_t>('7')) == static_cast<uint8_t>('7'));
+    expect(kz_replay_filename_prefix(static_cast<uint8_t>('/')) == 0);
+    expect(kz_replay_filename_prefix(static_cast<uint8_t>('\\')) == 0);
+    expect(kz_replay_filename_prefix(static_cast<uint8_t>(' ')) == 0);
 
     expect(kz_replay_should_prune(0, kz_replay_prune_reason::Upload));
     expect(kz_replay_should_prune(0, kz_replay_prune_reason::MapLoad));

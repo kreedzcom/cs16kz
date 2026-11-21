@@ -43,6 +43,18 @@ bool kz_replay_parse_uid(const std::string& filename, uint8_t& run_class, uint32
     return true;
 }
 
+uint8_t kz_replay_filename_prefix(uint8_t prefix)
+{
+    if (prefix == 0)
+    {
+        return 0;
+    }
+    const bool digit = prefix >= '0' && prefix <= '9';
+    const bool upper = prefix >= 'A' && prefix <= 'Z';
+    const bool lower = prefix >= 'a' && prefix <= 'z';
+    return (digit || upper || lower) ? prefix : static_cast<uint8_t>(0);
+}
+
 bool kz_replay_should_prune(int trigger, kz_replay_prune_reason reason)
 {
     if (reason == kz_replay_prune_reason::MapLoad)

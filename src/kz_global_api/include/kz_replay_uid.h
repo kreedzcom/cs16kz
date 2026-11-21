@@ -30,4 +30,7 @@ enum class kz_replay_prune_reason : uint8_t
  */
 bool kz_replay_should_prune(int trigger, kz_replay_prune_reason reason);
 
+/** 0 leaves the class digit. Any other value must be one ASCII letter or digit. */
+uint8_t kz_replay_filename_prefix(uint8_t prefix);
+
 #endif
