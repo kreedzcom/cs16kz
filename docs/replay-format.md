@@ -158,7 +158,7 @@ Section lengths come from the header's `size_types`, `size_flags`, `size_data`, 
 
 This column-major grouping clusters similar values (e.g. a given byte of an angle across thousands of ticks), which zstd compresses far better than the interleaved row form. The transform is lossless — decoding rebuilds the identical frame sequence.
 
-Compression runs on the upload thread; if a queued file is already `.krpz` it is uploaded as-is, otherwise the `.krpr` is reorganized and compressed first. Upload is chunked (64 KiB chunks, each with a CRC32 and index) and rate-limited.
+Compression runs on the upload thread; if a queued file is already `.krpz` it is uploaded as-is, otherwise the `.krpr` is reorganized and compressed first. Upload is chunked (64 KiB chunks, each with a CRC32 and index) and rate-limited. Local-only replays are compressed on the compress thread, and the map directory comes from a validated header map name.
 
 ---
 

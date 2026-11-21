@@ -1050,24 +1050,28 @@ static void kz_rp_compress_thread(void)
             }
             fclose(fp);
 
+            std::filesystem::path compressed = src;
+            compressed.replace_extension(KRP_EXT_COMPRESSED);
+
             fp = fopen(src.string().c_str(), "rb");
             if (!fp)
             {
                 kz_log(&g_replay_compress_log, "[COMPRESS] fopen failure: %s", strerror(errno));
+                std::error_code rm_ec;
+                std::filesystem::remove(compressed, rm_ec);
                 continue;
             }
 
             std::string mapname = kz_rp_mapname_from_header(fp);
             fclose(fp);
 
-            if (mapname.empty())
+            if (mapname.empty() || !kz_ws_valid_replay_segment(mapname.c_str()))
             {
-                kz_log(&g_replay_compress_log, "[COMPRESS] No map name in header: %s", src.filename().string().c_str());
+                kz_log(&g_replay_compress_log, "[COMPRESS] Invalid map name in header: %s", src.filename().string().c_str());
+                std::error_code rm_ec;
+                std::filesystem::remove(compressed, rm_ec);
                 continue;
             }
-
-            std::filesystem::path compressed = src;
-            compressed.replace_extension(KRP_EXT_COMPRESSED);
 
             std::filesystem::path dst = g_data_dir / "kz_global" / "replays" / mapname / compressed.filename();
             std::error_code ec;
@@ -1080,6 +1084,7 @@ static void kz_rp_compress_thread(void)
             if (ec)
             {
                 kz_log(&g_replay_compress_log, "[COMPRESS] Move failed (%s): %s", ec.message().c_str(), compressed.filename().string().c_str());
+                std::filesystem::remove(compressed, ec);
                 continue;
             }
             std::filesystem::remove(src, ec);
