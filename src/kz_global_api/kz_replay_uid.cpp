@@ -43,6 +43,23 @@ bool kz_replay_parse_uid(const std::string& filename, uint8_t& run_class, uint32
     return true;
 }
 
+bool kz_replay_should_prune(int trigger, kz_replay_prune_reason reason)
+{
+    if (reason == kz_replay_prune_reason::MapLoad)
+    {
+        return true;
+    }
+    if (trigger == 0)
+    {
+        return reason == kz_replay_prune_reason::Upload;
+    }
+    if (trigger == 1)
+    {
+        return reason == kz_replay_prune_reason::MapChange;
+    }
+    return false;
+}
+
 bool kz_replay_uid_is_better(uint8_t cls_a, uint32_t time_a, uint8_t cls_b, uint32_t time_b)
 {
     if (cls_a != cls_b)

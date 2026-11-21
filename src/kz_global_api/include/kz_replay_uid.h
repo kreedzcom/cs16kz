@@ -14,4 +14,20 @@ bool kz_replay_uid_is_better(uint8_t cls_a, uint32_t time_a, uint8_t cls_b, uint
 /** Best .krpz in map_dir by class then time; empty if none valid. */
 std::filesystem::path kz_replay_find_best_in_dir(const std::filesystem::path& map_dir);
 
+/** Why kz_rp_prune_replays was called. The cvar selects which reasons run. */
+enum class kz_replay_prune_reason : uint8_t
+{
+    Upload,
+    MapChange,
+    MapLoad,
+};
+
+/**
+ * trigger 0: Upload and MapLoad.
+ * trigger 1: MapChange and MapLoad.
+ * Any other trigger: MapLoad only.
+ * A null cvar is passed as 0.
+ */
+bool kz_replay_should_prune(int trigger, kz_replay_prune_reason reason);
+
 #endif
