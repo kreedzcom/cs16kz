@@ -178,7 +178,7 @@ The module exposes **Pawn natives** (see `addons/amxmodx/scripting/include/kz_gl
 | Player pauses (menu / +pause) | `kz_api_run_paused(id)` — returns `0` when pause is forbidden |
 | Player unpauses | `kz_api_run_unpaused(id)` |
 | Run invalid (death, disconnect, restart, style violation) | `kz_api_run_rejected(id, true)` |
-| Player finishes with a valid time | `kz_api_run_finished(id, Float:time)` |
+| Player finishes with a valid time | `kz_api_run_finished(id, Float:time, bool:submit_run = true, char_prefix = 0)` |
 
 **Timer:** The module does **not** compute finish time. Your plugin must track elapsed time and **exclude pause time** (see `addons/amxmodx/scripting/kz_global_api_tests.sma` for a minimal example).
 
