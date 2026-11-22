@@ -25,7 +25,7 @@ If you run a KZ server and want to join the global API (records, replays, SR bot
 
 ### To build
 
-- **[Zig](https://ziglang.org/)** ≥ **0.15.1** (see `minimum_zig_version` in `build.zig.zon`).
+- **[Zig](https://ziglang.org/)** ≥ **0.16.0** (see `minimum_zig_version` in `build.zig.zon`).
 - A **C/C++ toolchain** Zig can drive (Clang/LLVM is typical).
 - **Network** for the first `zig build` so dependencies in `build.zig.zon` can be fetched; after that, `zig build --fetch` can populate the cache for offline builds.
 - **Linux x86 release build** (`./build.sh`): 32-bit system libraries — on Debian/Ubuntu, enable `i386` and install `libsqlite3-dev:i386`, `libssl-dev:i386`, and `zlib1g-dev:i386` (CI does this automatically).
@@ -58,7 +58,7 @@ This runs:
 
 ## Testing
 
-**CI** runs on every push/PR: host unit tests, native API lint, and a full Linux x86 module build (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+**CI** runs on every push/PR: host unit tests, native API lint, and Linux and Windows x86 module builds (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). A `v*` tag publishes both platforms as a GitHub Release (see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
 Local host tests (no full AMXX dependency fetch required for the shell script):
 

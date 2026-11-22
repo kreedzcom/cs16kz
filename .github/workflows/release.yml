@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Static checks
+        run: bash scripts/lint-amxx.sh
+
+      - name: Fetch dependencies
+        run: zig build --fetch
+
+      - name: Host unit tests
+        run: zig build test -Dtest-only=true
+
+      - name: Install Linux x86 build dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsqlite3-dev:i386 \
+            libssl-dev:i386 \
+            zlib1g-dev:i386
+
+      - name: Build Linux x86
+        run: zig build -Dtarget=x86-linux-gnu -Doptimize=ReleaseFast --prefix zig-out-linux
+
+      - name: Build Windows x86
+        run: zig build -Dtarget=x86-windows-gnu -Doptimize=ReleaseFast --prefix zig-out-windows
+
+      - name: Pack release archives
+        run: |
+          set -euo pipefail
+          pack() {
+            local prefix="$1"
+            local archive="$2"
+            shift 2
+            local stage
+            stage="$(mktemp -d)"
+            mkdir -p \
+              "$stage/addons/amxmodx/modules" \
+              "$stage/addons/amxmodx/configs" \
+              "$stage/addons/amxmodx/data/kz_global" \
+              "$stage/addons/amxmodx/scripting/include"
+            local bin
+            for bin in "$@"; do
+              cp "$prefix/$bin" "$stage/addons/amxmodx/modules/"
+            done
+            cp addons/amxmodx/configs/kz_global.cfg "$stage/addons/amxmodx/configs/"
+            cp addons/amxmodx/data/kz_global/cacert.pem "$stage/addons/amxmodx/data/kz_global/"
+            cp \
+              addons/amxmodx/scripting/include/kz_global_api.inc \
+              addons/amxmodx/scripting/include/kz_global_api_stocks.inc \
+              addons/amxmodx/scripting/include/kz_global_api_version.inc \
+              "$stage/addons/amxmodx/scripting/include/"
+            mkdir -p dist
+            (cd "$stage" && zip -r "$GITHUB_WORKSPACE/dist/$archive" .)
+          }
+          pack zig-out-linux kz-global-linux-x86.zip \
+            lib/kz_global_api_amxx_i386.so lib/kz_base_amxx_i386.so
+          pack zig-out-windows kz-global-windows-x86.zip \
+            bin/kz_global_api_amxx.dll bin/kz_base_amxx.dll
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/kz-global-linux-x86.zip \
+            dist/kz-global-windows-x86.zip \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

@@ -122,18 +122,23 @@ Copy these from the release (or build output) into your game server:
 | Source | Destination |
 |--------|-------------|
 | `kz_global_api_amxx_i386.so` (Linux) or `kz_global_api_amxx.dll` (Windows) | `cstrike/addons/amxmodx/modules/` |
+| `kz_base_amxx_i386.so` (Linux) or `kz_base_amxx.dll` (Windows) | `cstrike/addons/amxmodx/modules/` |
 | `addons/amxmodx/configs/kz_global.cfg` | same path under `cstrike/` |
 | `addons/amxmodx/data/kz_global/cacert.pem` | same path under `cstrike/` |
 | `addons/amxmodx/scripting/include/kz_global_api*.inc` | same path (needed to **compile** your integration plugin) |
 
-Register the module in `cstrike/addons/amxmodx/configs/modules.ini`:
+The Linux modules link against the system 32-bit zlib. On Debian/Ubuntu install `zlib1g:i386`.
+
+Register the modules in `cstrike/addons/amxmodx/configs/modules.ini`:
 
 ```ini
 ; Linux
 kz_global_api_amxx_i386
+kz_base_amxx_i386
 
 ; Windows
 ; kz_global_api_amxx
+; kz_base_amxx
 ```
 
 On map load, the module automatically runs `exec addons/amxmodx/configs/kz_global.cfg` (via the AMXX configs dir).

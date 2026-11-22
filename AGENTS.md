@@ -14,7 +14,7 @@ accepts WebSocket connections, stores records, and serves replays from Cloudflar
 ## Tech stack
 
 - **C++17** — module source in `src/`
-- **Zig** (≥ 0.15.1, see `minimum_zig_version` in `build.zig.zon`) — build system only; no Zig application code
+- **Zig** (≥ 0.16.0, see `minimum_zig_version` in `build.zig.zon`) — build system only; no Zig application code
 - **AMX Mod X** + **Metamod** + **ReHLDS** (optional but recommended) — runtime integration
 - **IXWebSocket** + **mbedTLS** — WSS client
 - **Parson** — JSON parsing/serialization
@@ -45,7 +45,7 @@ First build needs network access to fetch dependencies (`zig build --fetch` popu
 
 Output artifacts:
 - Linux: `zig-out/lib/kz_global_api_amxx_i386.so`
-- Windows: `zig-out/lib/kz_global_api_amxx.dll`
+- Windows: `zig-out/bin/kz_global_api_amxx.dll`
 
 Deploy under `cstrike/addons/amxmodx/modules/` on the game server. Server setup is documented in `docs/server-integration.md`.
 

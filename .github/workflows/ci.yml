@@ -49,14 +49,35 @@ jobs:
       - name: Build AMXX module (Linux x86)
         run: ./build.sh
 
-      - name: Verify artifact
+      - name: Verify Linux artifacts
         run: |
           test -f zig-out/lib/kz_global_api_amxx_i386.so
-          file zig-out/lib/kz_global_api_amxx_i386.so
+          test -f zig-out/lib/kz_base_amxx_i386.so
+          file zig-out/lib/kz_global_api_amxx_i386.so zig-out/lib/kz_base_amxx_i386.so
 
-      - name: Upload AMXX module
+      - name: Build AMXX modules (Windows x86)
+        run: zig build -Dtarget=x86-windows-gnu -Doptimize=ReleaseFast --prefix zig-out-windows
+
+      - name: Verify Windows artifacts
+        run: |
+          test -f zig-out-windows/bin/kz_global_api_amxx.dll
+          test -f zig-out-windows/bin/kz_base_amxx.dll
+          file zig-out-windows/bin/kz_global_api_amxx.dll zig-out-windows/bin/kz_base_amxx.dll
+
+      - name: Upload Linux modules
         uses: actions/upload-artifact@v4
         with:
-          name: kz_global_api_amxx_i386
-          path: zig-out/lib/kz_global_api_amxx_i386.so
+          name: kz-global-linux-x86
+          path: |
+            zig-out/lib/kz_global_api_amxx_i386.so
+            zig-out/lib/kz_base_amxx_i386.so
+          retention-days: 14
+
+      - name: Upload Windows modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: kz-global-windows-x86
+          path: |
+            zig-out-windows/bin/kz_global_api_amxx.dll
+            zig-out-windows/bin/kz_base_amxx.dll
           retention-days: 14
