@@ -651,9 +651,8 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     std::string message;
     int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
-    json_object_set_string(data_obj, "nickname",   g_players[id].nickname);
-    json_object_set_string(data_obj, "ip_address", g_players[id].ipaddr);
-    json_object_set_string(data_obj, "steamid",    g_players[id].steamid);
+    json_object_set_string(data_obj, "nickname", g_players[id].nickname);
+    json_object_set_string(data_obj, "steamid",  g_players[id].steamid);
 
     kz_ws_build_msg(WSMsgOut::PLAYER_JOIN, data_val, message, msg_id);
 

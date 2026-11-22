@@ -5,7 +5,6 @@
 
 typedef struct {
     char nickname[32];
-    char ipaddr[16];
     char steamid[35];
     char steamid_short[35];
     bool is_bot;

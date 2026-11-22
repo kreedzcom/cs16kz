@@ -326,12 +326,9 @@ void FN_ClientPutInServer_Post(edict_t* pEntity)
             CLIENT_COMMAND(pEntity, (char*)"%s %s\n", g_player_cvars[i].name, g_player_cvars[i].expected_value);
         }
 
-        char szIP[16];
         const char* szAuth = GETPLAYERAUTHID(pEntity);
-        split_net_address(MF_GetPlayerIP(id), szIP, sizeof(szIP), nullptr, 0);
 
         snprintf(g_players[id].nickname, sizeof(g_players[0].nickname), "%s", MF_GetPlayerName(id));
-        snprintf(g_players[id].ipaddr, sizeof(g_players[0].ipaddr), "%s", szIP);
         snprintf(g_players[id].steamid, sizeof(g_players[0].steamid), "%s", szAuth);
 
         snprintf(g_players[id].steamid_short, sizeof(g_players[0].steamid_short), "%s", szAuth);
@@ -410,7 +407,6 @@ void KZ_SV_DropClient(edict_t* client)
 
     player_t& p        = g_players[id];
     p.nickname[0]      = '\0';
-    p.ipaddr[0]        = '\0';
     p.steamid[0]       = '\0';
     p.steamid_short[0] = '\0';
     p.is_bot           = false;
