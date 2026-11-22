@@ -13,6 +13,7 @@ const Versions = struct {
     patch: []const u8,
     date: []const u8,
     commit_url: []const u8,
+    author: []const u8,
 };
 
 /// AMXX/Metamod glue every module compiles against its own moduleconfig.h.
@@ -96,6 +97,8 @@ const ModuleContext = struct {
         lib.root_module.addCMacro("MODULE_VERSION", b.fmt("\"{s}\"", .{v.full}));
         lib.root_module.addCMacro("MODULE_COMMIT_URL", b.fmt("\"{s}\"", .{v.commit_url}));
         lib.root_module.addCMacro("MODULE_DATE", b.fmt("\"{s}\"", .{v.date}));
+        lib.root_module.addCMacro("MODULE_AUTHOR", b.fmt("\"{s}\"", .{v.author}));
+        lib.root_module.addCMacro("MODULE_URL", "\"https://kreedz.com\"");
         std.debug.print("  {s:<14} {s:<26} md5 {s}\n", .{ opts.name, v.full, checksum });
     }
 
@@ -422,10 +425,10 @@ pub fn build(b: *std.Build) !void
 		.dir = "src/kz_base",
 		.sources = &.{
                     "kz_api.cpp",
-                    "kz_cmd.cpp",
-                    "kz_base.cpp",
                     "kz_util.cpp",
                     "kz_mpbhop.cpp",
+                    "kz_base.cpp",
+                    "kz_cmd.cpp",
                     "main.cpp"
                 }
 	});
@@ -536,6 +539,29 @@ fn getCommitUrl(b: *std.Build) []const u8 {
     return b.fmt("{s}/commit/{s}", .{ stripUrlUserinfo(b, base), commit });
 }
 
+/// Repository owner -- the `owner` in `host/owner/repo` of the `origin` remote (ssh or https form).
+/// Returns "unknown" if git or the remote is unavailable.
+fn getGitOwner(b: *std.Build) []const u8 {
+    const res = std.process.run(b.allocator, b.graph.io, .{
+        .argv = &.{ "git", "config", "--get", "remote.origin.url" },
+    }) catch return "unknown";
+
+    var remote = std.mem.trimEnd(u8, res.stdout, "\r\n");
+    if (remote.len == 0) return "unknown";
+    if (std.mem.endsWith(u8, remote, ".git")) remote = remote[0 .. remote.len - 4];
+
+    // Split on the URL delimiters (works for ssh + https + credentialed forms); the owner is
+    // the second-to-last path segment and any "user:token@" userinfo is naturally excluded.
+    var it = std.mem.tokenizeAny(u8, remote, "/:@");
+    var last: ?[]const u8 = null;
+    var owner: ?[]const u8 = null;
+    while (it.next()) |seg| {
+        owner = last;
+        last = seg;
+    }
+    return b.fmt("{s}", .{owner orelse "unknown"});
+}
+
 /// Remove a `userinfo@` component (e.g. "user:token@") from a `scheme://` URL's authority.
 fn stripUrlUserinfo(b: *std.Build, url: []const u8) []const u8 {
     const scheme = std.mem.indexOf(u8, url, "://") orelse return url;
@@ -588,7 +614,7 @@ fn computeVersions(b: *std.Build) Versions {
     var patch_tokenizer = std.mem.tokenizeScalar(u8, raw_patch, '-');
     const patch = patch_tokenizer.next() orelse "0";
 
-    return .{ .full = full, .major = major, .minor = minor, .patch = patch, .date = getBuildDate(b), .commit_url = getCommitUrl(b) };
+    return .{ .full = full, .major = major, .minor = minor, .patch = patch, .date = getBuildDate(b), .commit_url = getCommitUrl(b), .author = getGitOwner(b) };
 }
 
 fn amxxCflags(b: *std.Build, target: std.Build.ResolvedTarget, optimise: std.builtin.OptimizeMode) ![]const []const u8 {

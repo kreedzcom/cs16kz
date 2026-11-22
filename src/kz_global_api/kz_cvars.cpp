@@ -50,13 +50,18 @@ cvar_t* kz_api_log_send = nullptr;
 cvar_t* kz_api_log_recv = nullptr;
 cvar_t* kz_api_log_upload = nullptr;
 cvar_t* kz_api_log_parse = nullptr;
+cvar_t* kz_api_log_mode = nullptr;
 
 cvar_t* kz_api_retries_max = nullptr;
 cvar_t* kz_api_retries_delay = nullptr;
 cvar_t* kz_api_replays_clevel = nullptr;
 cvar_t* kz_api_replays_max = nullptr;
+cvar_t* kz_api_replays_parse = nullptr;
+cvar_t* kz_api_replays_download = nullptr;
+cvar_t* kz_api_replays_prune_trigger = nullptr;
 
 cvar_t* kz_api_bot_prefix = nullptr;
 cvar_t* kz_api_bot_team = nullptr;
 cvar_t* kz_api_bot_use_cmd = nullptr;
 cvar_t* kz_api_allow_pause = nullptr;
+cvar_t* kz_api_ban_action = nullptr;

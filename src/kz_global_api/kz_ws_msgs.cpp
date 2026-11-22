@@ -319,6 +319,10 @@ void kz_ws_delete_record_replay(const char* mapname, const char* local_uid)
 
 bool kz_ws_try_fetch_replay(const char* mapname)
 {
+    if (kz_api_replays_download->value <= 0.0f)
+    {
+        return false;
+    }
     if (!mapname || !mapname[0] || !kz_ws_valid_replay_segment(mapname))
     {
         return false;
@@ -647,9 +651,8 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     std::string message;
     int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
-    json_object_set_string(data_obj, "nickname",   g_players[id].nickname);
-    json_object_set_string(data_obj, "ip_address", g_players[id].ipaddr);
-    json_object_set_string(data_obj, "steamid",    g_players[id].steamid);
+    json_object_set_string(data_obj, "nickname", g_players[id].nickname);
+    json_object_set_string(data_obj, "steamid",  g_players[id].steamid);
 
     kz_ws_build_msg(WSMsgOut::PLAYER_JOIN, data_val, message, msg_id);
 
@@ -879,10 +882,22 @@ std::function<void()> kz_ws_ack_player_join(JSON_Object* obj)
             return;
         }
 
+        const int action = kz_api_ban_action ? static_cast<int>(kz_api_ban_action->value) : 3;
+
+        if (action == 3)
+        {
+            g_players[indexOfEdict(pEntity)].no_submit.store(true, std::memory_order_relaxed);
+            return;
+        }
+
         char buff[192];
         snprintf(buff, sizeof(buff), "kick #%d \"You've been cross-community banned\"\n", GETPLAYERUSERID(pEntity));
         SERVER_COMMAND(buff);
 
+        if (action != 2)
+        {
+            return;
+        }
         if (!kz_ws_valid_steam_authid(szAuth))
         {
             kz_log(&g_ws_log, "[kz_ws_ack_player_join] Skipping banid: invalid steamid.");
@@ -1054,7 +1069,7 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
             std::filesystem::remove(raw_path, ec);
             file_moved = true;
 
-            kz_rp_prune_replays(mapname.c_str(), &g_ws_log);
+            kz_rp_prune_replays(mapname.c_str(), &g_ws_log, kz_replay_prune_reason::Upload);
         }
 
         cleanup();

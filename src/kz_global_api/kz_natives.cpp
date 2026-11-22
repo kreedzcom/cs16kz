@@ -197,7 +197,7 @@ static cell AMX_NATIVE_CALL kz_api_run_rejected(AMX* amx, cell* params)
     }
     return kz_rp_run_rejected(id, static_cast<bool>(params[2]));
 }
-/* native kz_api_run_finished(id, Float:time) */
+/* native kz_api_run_finished(id, Float:time, bool:submit_run = true, char_prefix = 0) */
 static cell AMX_NATIVE_CALL kz_api_run_finished(AMX* amx, cell* params)
 {
     if (!validate_active(amx) || !validate_params(amx, params, 2))
@@ -205,8 +205,14 @@ static cell AMX_NATIVE_CALL kz_api_run_finished(AMX* amx, cell* params)
         return 0;
     }
 
+    // Defaults live in the .inc, so plugins compiled before those arguments
+    // existed still pass only (id, time). Do not read past params[0].
+    const int argc = params[0] / sizeof(cell);
+    const bool submit_run = (argc >= 3) ? (params[3] != 0) : true;
+    const uint8_t char_prefix = (argc >= 4) ? static_cast<uint8_t>(params[4]) : 0;
+
     int id = validate_player(amx, params[1]);
-    return (id ? kz_rp_run_finished(id, amx_ctof(params[2])) : 0);
+    return (id ? kz_rp_run_finished(id, amx_ctof(params[2]), submit_run, char_prefix) : 0);
 }
 
 static cell AMX_NATIVE_CALL kz_api_del_record(AMX* amx, cell* params)

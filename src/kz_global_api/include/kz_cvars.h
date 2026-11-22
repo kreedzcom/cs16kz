@@ -14,16 +14,21 @@ extern cvar_t* kz_api_log_send;
 extern cvar_t* kz_api_log_recv;
 extern cvar_t* kz_api_log_upload;
 extern cvar_t* kz_api_log_parse;
+extern cvar_t* kz_api_log_mode;
 
 extern cvar_t* kz_api_retries_max;
 extern cvar_t* kz_api_retries_delay;
 extern cvar_t* kz_api_replays_clevel;
 extern cvar_t* kz_api_replays_max;
+extern cvar_t* kz_api_replays_parse;
+extern cvar_t* kz_api_replays_download;
+extern cvar_t* kz_api_replays_prune_trigger;
 
 extern cvar_t* kz_api_bot_prefix;
 extern cvar_t* kz_api_bot_team;
 extern cvar_t* kz_api_bot_use_cmd;
 extern cvar_t* kz_api_allow_pause;
+extern cvar_t* kz_api_ban_action;
 
 extern const pr_cvar_t g_server_cvars[];
 extern const size_t g_server_cvars_size;

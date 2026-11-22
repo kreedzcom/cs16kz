@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <mutex>
+#include <cstdio>
+#include <ctime>
 
 std::thread::id g_main_thread;
 std::vector<kz::queue<log_entry>*> g_log_queues;
@@ -159,6 +161,52 @@ void kz_log_removeq(kz::queue<log_entry>* queue)
     std::lock_guard<std::mutex> lock(g_log_queues_mtx);
     g_log_queues.erase(std::remove(g_log_queues.begin(), g_log_queues.end(), queue), g_log_queues.end());
 }
+void kz_log_emit(const char* message)
+{
+    const int mode = kz_api_log_mode ? static_cast<int>(kz_api_log_mode->value) : 1;
+    if (mode != 0 && mode != 2) // mode 1 (default) and any unknown value: amxx logging
+    {
+        MF_Log("%s", message);
+        return;
+    }
+
+    char date[32];
+    time_t td;
+    time(&td);
+    strftime(date, sizeof(date), "%m/%d/%Y - %H:%M:%S", localtime(&td));
+
+    if (mode == 0)
+    {
+        MF_PrintSrvConsole("L %s: [%s] %s\n", date, MODULE_LOGTAG, message);
+        return;
+    }
+
+    char file[256];
+    MF_BuildPathnameR(file, sizeof(file), "%s/kz_global_api.log", MF_GetLocalInfo("amxx_logs", "addons/amxmodx/logs"));
+
+    bool first_time = true;
+    if (FILE* probe = fopen(file, "r"))
+    {
+        first_time = false;
+        fclose(probe);
+    }
+
+    FILE* fp = fopen(file, "a");
+    if (!fp)
+    {
+        return;
+    }
+
+    if (first_time)
+    {
+        fprintf(fp, "L %s: Log file started (file \"%s\") (version \"%s\")\n", date, file, MODULE_VERSION);
+        MF_PrintSrvConsole("L %s: Log file started (file \"%s\") (version \"%s\")\n", date, file, MODULE_VERSION);
+    }
+
+    fprintf(fp, "L %s: [%s] %s\n", date, MODULE_LOGTAG, message);
+    MF_PrintSrvConsole("L %s: [%s] %s\n", date, MODULE_LOGTAG, message);
+    fclose(fp);
+}
 void kz_log_flush(uint64_t nano_delay)
 {
     auto now = std::chrono::steady_clock::now();
@@ -185,7 +233,7 @@ void kz_log_flush(uint64_t nano_delay)
 
         if (oldest_entry)
         {
-            MF_Log("%s", oldest_entry->message);
+            kz_log_emit(oldest_entry->message);
             best_q->pop();
         }
         else
@@ -207,7 +255,7 @@ void kz_log(kz::queue<log_entry>* queue, const char* fmt, ...)
 
     if(queue == nullptr || std::this_thread::get_id() == g_main_thread)
     {
-        MF_Log("%s", entry.message);
+        kz_log_emit(entry.message);
         return;
     }
     while(!queue->try_push(std::move(entry)))
@@ -215,7 +263,6 @@ void kz_log(kz::queue<log_entry>* queue, const char* fmt, ...)
         std::this_thread::yield();
     }
 }
-
 // amxmodx/sm_crc32.cpp
 uint32_t UTIL_CRC32(const void *data, size_t dataLength)
 {
@@ -362,8 +409,16 @@ edict_t* find_player_by_authid(const char* authid)
 }
 cvar_t* register_cvar(const char* name, const char* value, int flags)
 {
-    cvar_t reg_helper;
-    reg_helper.name     = const_cast<char*>(name); // makes the compiler fucking happy
+    // Metamod intercepts this call (meta_CVarRegister) and registers its own copy of the
+    // struct with the engine (name/string are strdup'd), so lifetime is not the issue --
+    // but it uses the ADDRESS of our variable (Plugins->find_memloc) to identify which
+    // plugin registered the cvar. "static" ensures the address lies inside this module's
+    // image so the lookup succeeds (stack addresses fail it; with optimized builds
+    // that ended in crashes).
+
+    static cvar_t reg_helper;
+
+    reg_helper.name     = const_cast<char*>(name);
     reg_helper.string   = const_cast<char*>(value);
     reg_helper.flags    = flags;
 

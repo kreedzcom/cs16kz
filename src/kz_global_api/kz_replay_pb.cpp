@@ -570,6 +570,10 @@ static void kz_bot_footsteps(edict_t* pent)
 /***************************************************************************************************************/
 void kz_pb_parse_file_async(std::filesystem::path file)
 {
+    if (kz_api_replays_parse->value <= 0.0f)
+    {
+        return;
+    }
     if (!g_pb_parse_queue.try_push(std::move(file)))
     {
         kz_log(nullptr, "[PARSE] The queue is full"); // impossible, but wtv

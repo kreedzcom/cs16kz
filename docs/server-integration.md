@@ -160,6 +160,7 @@ Other useful settings (all documented in the cfg file):
 | `kz_api_retries_max` / `kz_api_retries_delay` | Retry failed API messages |
 | `kz_api_allow_pause` | Allow run pause on this server (`0` = forbidden on global servers, default) |
 | `kz_api_replays_clevel` | Replay compression level (1–22) |
+| `kz_api_replays_prune_trigger` | When replays are pruned to `kz_api_replays_max`. `0` (default) after each upload, `1` at map change. Map load always prunes. |
 | `kz_api_bot_prefix` / `bot_team` / `bot_use_cmd` | SR replay bot appearance and behaviour |
 
 Changing `kz_api_url` or `kz_api_token` triggers an automatic reconnect.
@@ -178,7 +179,7 @@ The module exposes **Pawn natives** (see `addons/amxmodx/scripting/include/kz_gl
 | Player pauses (menu / +pause) | `kz_api_run_paused(id)` — returns `0` when pause is forbidden |
 | Player unpauses | `kz_api_run_unpaused(id)` |
 | Run invalid (death, disconnect, restart, style violation) | `kz_api_run_rejected(id, true)` |
-| Player finishes with a valid time | `kz_api_run_finished(id, Float:time)` |
+| Player finishes with a valid time | `kz_api_run_finished(id, Float:time, bool:submit_run = true, char_prefix = 0)` |
 
 **Timer:** The module does **not** compute finish time. Your plugin must track elapsed time and **exclude pause time** (see `addons/amxmodx/scripting/kz_global_api_tests.sma` for a minimal example).
 

@@ -25,7 +25,7 @@ bool kz_replay_parse_uid(const std::string& filename, uint8_t& run_class, uint32
     char* end = nullptr;
     const std::string class_str = stem.substr(0, sep1);
     const long cls = strtol(class_str.c_str(), &end, 10);
-    if (!end || *end != '\0' || cls < 0 || cls > 1)
+    if (!end || *end != '\0' || cls < 0 || cls > 9)
     {
         return false;
     }
@@ -41,6 +41,35 @@ bool kz_replay_parse_uid(const std::string& filename, uint8_t& run_class, uint32
     run_class = static_cast<uint8_t>(cls);
     time_ms = static_cast<uint32_t>(ms);
     return true;
+}
+
+uint8_t kz_replay_filename_prefix(uint8_t prefix)
+{
+    if (prefix == 0)
+    {
+        return 0;
+    }
+    const bool digit = prefix >= '0' && prefix <= '9';
+    const bool upper = prefix >= 'A' && prefix <= 'Z';
+    const bool lower = prefix >= 'a' && prefix <= 'z';
+    return (digit || upper || lower) ? prefix : static_cast<uint8_t>(0);
+}
+
+bool kz_replay_should_prune(int trigger, kz_replay_prune_reason reason)
+{
+    if (reason == kz_replay_prune_reason::MapLoad)
+    {
+        return true;
+    }
+    if (trigger == 0)
+    {
+        return reason == kz_replay_prune_reason::Upload;
+    }
+    if (trigger == 1)
+    {
+        return reason == kz_replay_prune_reason::MapChange;
+    }
+    return false;
 }
 
 bool kz_replay_uid_is_better(uint8_t cls_a, uint32_t time_a, uint8_t cls_b, uint32_t time_b)

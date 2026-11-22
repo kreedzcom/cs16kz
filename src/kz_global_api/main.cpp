@@ -69,16 +69,21 @@ void FN_AMXX_ATTACH()
     kz_api_log_recv   = register_cvar("kz_api_log_recv",   "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_log_upload = register_cvar("kz_api_log_upload", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_log_parse  = register_cvar("kz_api_log_parse",  "1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_log_mode   = register_cvar("kz_api_log_mode",   "1", FCVAR_EXTDLL | FCVAR_SPONLY);
 
-    kz_api_retries_max    = register_cvar("kz_api_retries_max",    "4", FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_retries_delay  = register_cvar("kz_api_retries_delay",  "5", FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_replays_clevel = register_cvar("kz_api_replays_clevel", "10", FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_replays_max    = register_cvar("kz_api_replays_max",    "-1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_retries_max           = register_cvar("kz_api_retries_max",           "4",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_retries_delay         = register_cvar("kz_api_retries_delay",         "5",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_clevel        = register_cvar("kz_api_replays_clevel",        "10", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_max           = register_cvar("kz_api_replays_max",           "-1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_parse         = register_cvar("kz_api_replays_parse",         "1",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_download      = register_cvar("kz_api_replays_download",      "1",  FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_replays_prune_trigger = register_cvar("kz_api_replays_prune_trigger", "0", FCVAR_EXTDLL | FCVAR_SPONLY);
 
     kz_api_bot_prefix  = register_cvar("kz_api_bot_prefix", "[SR]", FCVAR_EXTDLL | FCVAR_SPONLY);
-    kz_api_bot_team    = register_cvar("kz_api_bot_team", "1", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_bot_team    = register_cvar("kz_api_bot_team",    "1", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_bot_use_cmd = register_cvar("kz_api_bot_use_cmd", "0", FCVAR_EXTDLL | FCVAR_SPONLY);
     kz_api_allow_pause = register_cvar("kz_api_allow_pause", "0", FCVAR_EXTDLL | FCVAR_SPONLY);
+    kz_api_ban_action  = register_cvar("kz_api_ban_action",  "0", FCVAR_EXTDLL | FCVAR_SPONLY);
 
     REG_SVR_COMMAND("kz_api", kz_api_cmd);
     kz_api_add_natives();
@@ -242,6 +247,7 @@ void FN_ChangeLevel(const char *s1, const char *s2)
     g_early_mapchange = true;
     if (g_initialized)
     {
+        kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr, kz_replay_prune_reason::MapChange);
         kz_storage_clear();
     }
     RETURN_META(MRES_IGNORED);
@@ -253,6 +259,7 @@ void FN_MessageBegin(int msg_dest, int msg_type, const float *pOrigin, edict_t *
         g_early_mapchange = true;
         if (g_initialized)
         {
+            kz_rp_prune_replays(STRING(gpGlobals->mapname), nullptr, kz_replay_prune_reason::MapChange);
             kz_storage_clear();
         }
     }
@@ -319,12 +326,9 @@ void FN_ClientPutInServer_Post(edict_t* pEntity)
             CLIENT_COMMAND(pEntity, (char*)"%s %s\n", g_player_cvars[i].name, g_player_cvars[i].expected_value);
         }
 
-        char szIP[16];
         const char* szAuth = GETPLAYERAUTHID(pEntity);
-        split_net_address(MF_GetPlayerIP(id), szIP, sizeof(szIP), nullptr, 0);
 
         snprintf(g_players[id].nickname, sizeof(g_players[0].nickname), "%s", MF_GetPlayerName(id));
-        snprintf(g_players[id].ipaddr, sizeof(g_players[0].ipaddr), "%s", szIP);
         snprintf(g_players[id].steamid, sizeof(g_players[0].steamid), "%s", szAuth);
 
         snprintf(g_players[id].steamid_short, sizeof(g_players[0].steamid_short), "%s", szAuth);
@@ -379,6 +383,11 @@ void KZ_Cvar_DirectSet(cvar_t* var, const char* const value, IRehldsHook_Cvar_Di
 }
 void KZ_SV_DropClient(edict_t* client)
 {
+    // edict can be null when a client is dropped before it's assigned (e.g. reauthcheck).
+    if (!client)
+    {
+        return;
+    }
     int id = indexOfEdict(client);
     if (id <= 0 || id > gpGlobals->maxClients)
     {
@@ -396,7 +405,12 @@ void KZ_SV_DropClient(edict_t* client)
         return;
     }
 
-    memset(&g_players[id], 0, sizeof(g_players[0]));
+    player_t& p        = g_players[id];
+    p.nickname[0]      = '\0';
+    p.steamid[0]       = '\0';
+    p.steamid_short[0] = '\0';
+    p.is_bot           = false;
+    p.no_submit.store(false, std::memory_order_relaxed);
 }
 /***************************************************************************************************************/
 /***************************************************************************************************************/

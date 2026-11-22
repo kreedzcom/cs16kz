@@ -4,6 +4,7 @@
 #include <filesystem>
 #include "usercmd.h"
 #include "krp_format.h"
+#include "kz_replay_uid.h"
 
 enum : uint8_t
 {
@@ -27,6 +28,8 @@ typedef struct  {
         uint64_t ts;
         uint8_t event;
     };
+    bool submit;
+    uint8_t prefix;
 } krp_signal;
 
 typedef struct {
@@ -84,12 +87,12 @@ extern int kz_rp_run_gocheck(int id);
 extern int kz_rp_run_paused(int id);
 extern int kz_rp_run_unpaused(int id);
 extern int kz_rp_run_rejected(int id, bool delete_file);
-extern int kz_rp_run_finished(int id, float time);
+extern int kz_rp_run_finished(int id, float time, bool submit_run, uint8_t char_prefix);
 
 extern void kz_rp_init(void);
 extern void kz_rp_uninit(void);
 extern void kz_rp_update_header(void);
-extern void kz_rp_prune_replays(const char* mapname, kz::queue<log_entry>* log_queue);
+extern void kz_rp_prune_replays(const char* mapname, kz::queue<log_entry>* log_queue, kz_replay_prune_reason reason);
 extern void kz_rp_set_cmd(int id, const usercmd_t* cmd);
 extern void kz_rp_set_vars(int id, const entvars_t* vars);
 extern bool kz_rp_compress_and_upload_async(ws_upload upr);

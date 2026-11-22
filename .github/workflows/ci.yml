@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -52,3 +53,10 @@ jobs:
         run: |
           test -f zig-out/lib/kz_global_api_amxx_i386.so
           file zig-out/lib/kz_global_api_amxx_i386.so
+
+      - name: Upload AMXX module
+        uses: actions/upload-artifact@v4
+        with:
+          name: kz_global_api_amxx_i386
+          path: zig-out/lib/kz_global_api_amxx_i386.so
+          retention-days: 14

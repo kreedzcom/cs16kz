@@ -51,8 +51,20 @@ native kz_api_run_rejected(id, bool:delete_file);
 
 /**
  * Notifies the API that a run has been successfully completed.
+ *
+ * @param id            Player index.
+ * @param time          Run time in seconds.
+ * @param submit_run    true  = submit the run and its replay to the API (default).
+ *                      false = keep the replay locally only: it is compressed
+ *                      and stored in the map's replay folder, and nothing is
+ *                      sent to the API. Runs from players with submission
+ *                      disabled are never submitted.
+ * @param char_prefix   Optional character that replaces the first character of
+ *                      the replay filename, which is normally the gocheck flag
+ *                      (0 or 1). 0 = no change (default). Pass a character that is
+ *                      safe in a filename.
  */
-native kz_api_run_finished(id, Float:time);
+native kz_api_run_finished(id, Float:time, bool:submit_run = true, char_prefix = 0);
 
 /**
  * Notifies the API that a player made a checkpoint.

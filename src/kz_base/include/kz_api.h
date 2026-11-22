@@ -1,6 +1,8 @@
 #ifndef KZ_API_H
 #define KZ_API_H
 
+#include <cstdint>
+
 // Runtime bridge into the kz_global_api module (records / replays).
 //
 // The kz_rp_run_* pointers are resolved via MF_RequestFunction() against the functions
@@ -15,7 +17,7 @@ extern int (*kz_rp_run_gocheck)(int id);
 extern int (*kz_rp_run_paused)(int id);
 extern int (*kz_rp_run_unpaused)(int id);
 extern int (*kz_rp_run_rejected)(int id, bool delete_file);
-extern int (*kz_rp_run_finished)(int id, float time);
+extern int (*kz_rp_run_finished)(int id, float time, bool submit_run, uint8_t char_prefix);
 
 // Resolve the kz_global_api functions. Call once after all modules load (OnPluginsLoaded).
 void kz_api_init();

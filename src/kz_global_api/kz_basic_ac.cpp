@@ -85,11 +85,12 @@ void kz_ac_connect(int id, edict_t* pEdict)
 }
 void kz_ac_cmd(int id, const usercmd_t* ucmd)
 {
-    g_total_frames[id] += 1;
     memcpy((void*)&g_current_cmd[id], ucmd, sizeof(usercmd_t));
 }
 void kz_ac_postthink(int id, edict_t* pEdict)
 {
+    g_total_frames[id] += 1;
+
     float fmv = fabs(g_current_cmd[id].forwardmove);
     float smv = fabs(g_current_cmd[id].sidemove);
 

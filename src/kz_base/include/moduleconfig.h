@@ -26,15 +26,7 @@
  *   to add multiple entries.
  */
 
-// MD5 checksum of the compiled Linux binary (32 hex chars = 16 bytes).
-// Set via -DMODULE_CHECKSUM=\"<md5hex>\" in the build system after linking.
-#ifndef MODULE_CHECKSUM
-#define MODULE_CHECKSUM ""
-#endif
-
 #define MODULE_NAME "[KZ] Base"
-#define MODULE_AUTHOR "fxr"
-#define MODULE_URL ""
 #define MODULE_LOGTAG "KZ Base"
 #define MODULE_LIBRARY "kz_base"
 #define MODULE_LIBCLASS ""

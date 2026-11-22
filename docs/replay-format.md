@@ -121,7 +121,9 @@ On finish the file is renamed to:
 
 where `class` is a single **run-class flag** — `0` for a PRO run (0 gochecks), `1` for a NUB run (≥1 gocheck) — `time_ms` is the run time in milliseconds (zero-padded to 8 digits), `steamid_short` is the compact SteamID, and `timestamp_base36` is the start timestamp in base-36. The exact gocheck count is **not** in the filename; it lives in the header (`run.teleports`).
 
-Putting the class flag first and the zero-padded time second makes a plain lexicographic sort equal to **PRO-before-NUB, then fastest time** — which is how playback picks the map's SR replay (a pro run always outranks any nub run, and within a class the faster time wins; gocheck count is never a tiebreaker). Selection (`kz_pb_find_fastest`) and pruning (`kz_rp_prune_replays`) both rely on this ordering, so the field order and widths must stay stable.
+`kz_api_run_finished` may replace that first byte with one ASCII letter or digit (`char_prefix`). `0` leaves the class flag unchanged. A player who must not submit records (`no_submit`) is stored locally with `x` in that position, which overrides `char_prefix`. Those files are not sent to the API. `kz_replay_parse_uid` rejects an `x` prefix, so `kz_pb_find_fastest` will not pick one as the map's SR replay. Prune still sorts filenames lexicographically, so `x` files are deleted before `0`–`9`.
+
+Putting the class flag first and the zero-padded time second makes a plain lexicographic sort equal to **PRO-before-NUB, then fastest time** — which is how playback picks the map's SR replay (a pro run always outranks any nub run, and within a class the faster time wins; gocheck count is never a tiebreaker). Selection (`kz_pb_find_fastest`) and pruning (`kz_rp_prune_replays`) both rely on this ordering, so the field order and widths must stay stable. The parser accepts class digits `0`–`9`; the writer itself only emits `0` or `1` unless a prefix replaces that byte.
 
 ---
 
@@ -156,7 +158,7 @@ Section lengths come from the header's `size_types`, `size_flags`, `size_data`, 
 
 This column-major grouping clusters similar values (e.g. a given byte of an angle across thousands of ticks), which zstd compresses far better than the interleaved row form. The transform is lossless — decoding rebuilds the identical frame sequence.
 
-Compression runs on the upload thread; if a queued file is already `.krpz` it is uploaded as-is, otherwise the `.krpr` is reorganized and compressed first. Upload is chunked (64 KiB chunks, each with a CRC32 and index) and rate-limited.
+Compression runs on the upload thread; if a queued file is already `.krpz` it is uploaded as-is, otherwise the `.krpr` is reorganized and compressed first. Upload is chunked (64 KiB chunks, each with a CRC32 and index) and rate-limited. Local-only replays are compressed on the compress thread, and the map directory comes from a validated header map name.
 
 ---
 
