@@ -202,10 +202,12 @@ void kz_ws_init()
 {
     kz_log_addq(&g_ws_log);
     ix::initNetSystem();
+    kz_ws_start_download_worker();
 }
 void kz_ws_uninit(void)
 {
     kz_ws_stop();
+    kz_ws_stop_download_worker();
     ix::uninitNetSystem();
 }
 void kz_ws_reset_auto_reconnect_policy(void)

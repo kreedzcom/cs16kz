@@ -69,6 +69,8 @@ extern void kz_ws_wait_for_file_ack(const ws_upload& upload);
 extern void kz_ws_cancel_active_uploads();
 extern size_t kz_ws_active_upload_count();
 
+extern void kz_ws_start_download_worker();
+extern void kz_ws_stop_download_worker();
 extern void kz_ws_init(void);
 extern void kz_ws_uninit(void);
 
