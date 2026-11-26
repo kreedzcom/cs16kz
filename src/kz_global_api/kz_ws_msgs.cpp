@@ -20,6 +20,7 @@
 #include <deque>
 #include <filesystem>
 #include <ixwebsocket/IXHttpClient.h>
+#include <map>
 #include <set>
 #include <thread>
 #include <vector>
@@ -73,6 +74,9 @@ size_t kz_ws_active_upload_count()
 
 static std::mutex g_replay_fetch_mtx;
 static uint64_t g_download_map_generation = 0; // game thread only
+static int64_t g_latest_replay_request_id = 0;
+static int64_t g_replay_map_request_floor = 0;
+static std::map<std::string, int64_t> g_replay_invalidations; // game thread only
 static std::set<std::string> g_replay_fetch_pending;
 static std::set<std::string> g_replay_pro_upgrade_failed;
 
@@ -142,25 +146,10 @@ static void kz_ws_clear_replay_fetch_pending(const char* mapname)
     g_replay_fetch_pending.erase(mapname);
 }
 
-static void kz_ws_clear_replay_fetch_pending_except(const char* keep_mapname)
+static void kz_ws_clear_all_replay_fetch_pending()
 {
     std::lock_guard<std::mutex> lock(g_replay_fetch_mtx);
-    if (!keep_mapname || !keep_mapname[0])
-    {
-        g_replay_fetch_pending.clear();
-        return;
-    }
-    for (auto it = g_replay_fetch_pending.begin(); it != g_replay_fetch_pending.end();)
-    {
-        if (*it != keep_mapname)
-        {
-            it = g_replay_fetch_pending.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
+    g_replay_fetch_pending.clear();
 }
 
 static ix::SocketTLSOptions kz_ws_replay_download_tls_options(void)
@@ -288,11 +277,13 @@ void kz_ws_on_map_loaded(bool force)
 
     snprintf(s_last_map_loaded, sizeof(s_last_map_loaded), "%s", mapname);
     ++g_download_map_generation;
+    g_replay_map_request_floor = g_latest_replay_request_id;
+    g_replay_invalidations.clear();
 
     g_early_mapchange = false;
     g_wait_after_load = 1.0f;
 
-    kz_ws_clear_replay_fetch_pending_except(mapname);
+    kz_ws_clear_all_replay_fetch_pending();
     kz_ws_clear_replay_pro_upgrade_failed(mapname);
 
     kz_rp_update_header();
@@ -345,6 +336,11 @@ void kz_ws_delete_record_replay(const char* mapname, const char* local_uid, cons
 
     std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / cache_uid;
     path.replace_extension(KRP_EXT_COMPRESSED);
+    if (FStrEq(mapname, STRING(gpGlobals->mapname)))
+    {
+        g_replay_invalidations.insert_or_assign(cache_uid, g_latest_replay_request_id);
+        kz_ws_clear_replay_fetch_pending(mapname);
+    }
     std::error_code ec;
     std::filesystem::remove(path, ec);
     kz_pb_drop_parsed_replay(path);
@@ -392,6 +388,7 @@ bool kz_ws_try_fetch_replay(const char* mapname)
     const auto entry = kz_ws_store_msg(WSMsgOut::GET_REPLAY, data_val);
     if (entry.message)
     {
+        g_latest_replay_request_id = entry.msg_id;
         kz_ws_queue_msg(entry.message, entry.msg_id);
     }
     else
@@ -410,6 +407,7 @@ struct ReplayDownload
     std::filesystem::path target;
     std::filesystem::path temporary;
     uint64_t map_generation;
+    int64_t request_id;
     bool downloaded = false;
 };
 
@@ -535,7 +533,7 @@ void kz_ws_stop_download_worker()
     g_download_complete.clear();
 }
 
-static bool kz_ws_download_replay_async(std::string url, std::string mapname, std::string local_uid)
+static bool kz_ws_download_replay_async(std::string url, std::string mapname, std::string local_uid, int64_t request_id)
 {
     std::lock_guard<std::mutex> lock(g_download_mtx);
     if (!g_download_accepting || url.rfind("https://", 0) != 0 ||
@@ -548,7 +546,7 @@ static bool kz_ws_download_replay_async(std::string url, std::string mapname, st
     auto temporary = target;
     temporary += ".part." + std::to_string(++g_download_sequence);
     g_download_pending.push_back({std::move(url), std::move(mapname), std::move(local_uid),
-                                  std::move(target), std::move(temporary), g_download_map_generation});
+                                  std::move(target), std::move(temporary), g_download_map_generation, request_id});
     g_download_cv.notify_one();
     return true;
 }
@@ -567,7 +565,9 @@ static void kz_ws_process_download_completion()
     }
 
     std::error_code ec;
+    const auto invalidation = g_replay_invalidations.find(job.uid);
     if (job.map_generation != g_download_map_generation ||
+        (invalidation != g_replay_invalidations.end() && job.request_id <= invalidation->second) ||
         !FStrEq(job.mapname.c_str(), STRING(gpGlobals->mapname)))
     {
         std::filesystem::remove(job.temporary, ec);
@@ -838,11 +838,20 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
     else if (msg_type == WSMsgOut::GET_REPLAY)
     {
         const char* map_name = json_object_dotget_string(json_value_get_object(stored_val), "data.map_name");
-        if (map_name && map_name[0] && kz_ws_map_has_pro_wr() && !kz_ws_local_has_pro_replay(map_name))
+        if (map_name && map_name[0])
         {
-            g_replay_pro_upgrade_failed.insert(map_name);
+            callback = [map = std::string(map_name), msg_id]() {
+                if (msg_id != g_latest_replay_request_id || msg_id <= g_replay_map_request_floor)
+                {
+                    return;
+                }
+                if (kz_ws_map_has_pro_wr() && !kz_ws_local_has_pro_replay(map.c_str()))
+                {
+                    g_replay_pro_upgrade_failed.insert(map);
+                }
+                kz_ws_clear_replay_fetch_pending(map.c_str());
+            };
         }
-        kz_ws_clear_replay_fetch_pending(map_name);
     }
     json_value_free(stored_val);
     return callback;
@@ -1242,7 +1251,19 @@ std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj)
         return nullptr;
     }
 
-    return [url = std::string(url), mapname = std::string(map_name), uid = cache_uid]() {
+    const double msg_id = json_object_get_number(obj, "msg_id");
+    if (!(msg_id >= 1 && msg_id <= 9007199254740991.0))
+    {
+        return nullptr;
+    }
+    const auto request_id = static_cast<int64_t>(msg_id);
+    return [url = std::string(url), mapname = std::string(map_name), uid = cache_uid, request_id]() {
+        const auto invalidation = g_replay_invalidations.find(uid);
+        if (request_id <= g_replay_map_request_floor ||
+            (invalidation != g_replay_invalidations.end() && request_id <= invalidation->second))
+        {
+            return;
+        }
         if (!FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
         {
             kz_ws_clear_replay_fetch_pending(mapname.c_str());
@@ -1254,7 +1275,7 @@ std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj)
             kz_ws_clear_replay_fetch_pending(mapname.c_str());
             return;
         }
-        if (!kz_ws_download_replay_async(url, mapname, uid))
+        if (!kz_ws_download_replay_async(url, mapname, uid, request_id))
         {
             kz_ws_schedule_replay_download_retry(mapname);
         }

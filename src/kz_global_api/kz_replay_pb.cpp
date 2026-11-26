@@ -654,6 +654,7 @@ void kz_pb_parser_thread(void)
             }
             if (rsize > 1)
             {
+                std::lock_guard<std::mutex> lock(g_pb_data_mtx);
                 std::error_code ec;
                 if (!std::filesystem::exists(pb_data.filepath, ec) || ec)
                 {
@@ -662,7 +663,6 @@ void kz_pb_parser_thread(void)
                 }
                 else
                 {
-                    std::lock_guard<std::mutex> lock(g_pb_data_mtx);
                     kz_log(&g_pb_parse_log, "[PARSE] Loaded %zu frames from replay: %s/%s", pb_data.frames.size(), file->parent_path().filename().string().c_str(), file->filename().string().c_str());
 
                     g_pb_data.push_back(std::move(pb_data));
