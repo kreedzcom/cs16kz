@@ -44,17 +44,17 @@ zig build
 First build needs network access to fetch dependencies (`zig build --fetch` populates the cache for offline builds).
 
 Output artifacts:
-- Linux: `zig-out/lib/kz_global_api_amxx_i386.so`
-- Windows: `zig-out/bin/kz_global_api_amxx.dll`
+- Linux: `zig-out/lib/kz_global_api_amxx_i386.so` and `zig-out/lib/kz_base_amxx_i386.so`
+- Windows: `zig-out/bin/kz_global_api_amxx.dll` and `zig-out/bin/kz_base_amxx.dll`
 
 Deploy under `cstrike/addons/amxmodx/modules/` on the game server. Server setup is documented in `docs/server-integration.md`.
 
 ## Code conventions
 
-- C++ sources live in `src/`; public headers in `src/include/`
+- C++ sources live in `src/kz_global_api/` and `src/kz_base/`, with headers in each module's `include/` directory
 - One responsibility per file — keep files small and focused (e.g. `kz_ws.cpp` for connection lifecycle, `kz_ws_msgs.cpp` for message handlers)
 - Use `kz_` prefix for module-specific symbols; KRP replay types use `krp_`
-- WebSocket message type constants live in `src/include/kz_ws.h` (`WSMsgOut::`, `WSMsgIn::`)
+- WebSocket message type constants live in `src/kz_global_api/include/kz_ws_protocol.h` (`WSMsgOut::`, `WSMsgIn::`)
 - Pawn natives are registered in `kz_natives.cpp`; public API headers in `addons/amxmodx/scripting/include/`
 - CVars are defined in `kz_cvars.cpp` / `kz_cvars.h`
 - Use `kz_log(&g_*_log, ...)` for module logging — never `printf` or `std::cout`
@@ -66,7 +66,7 @@ Deploy under `cstrike/addons/amxmodx/modules/` on the game server. Server setup 
 
 - `MF_GetAmxString` returns a `char*` managed by AMXX — **never** pass a local buffer or `sizeof` (CI rejects this pattern)
 - Do not allocate with `new`/`malloc` before `OnAmxxAttach` unless using the memory manager (disabled here)
-- Metamod hooks are enabled via `#define FN_*` entries in `src/include/moduleconfig.h` — only uncomment hooks you actually implement
+- Metamod hooks are enabled via `#define FN_*` entries in each module's `include/moduleconfig.h` — only uncomment hooks you actually implement
 - Engine/game callbacks run on the main server thread; the WebSocket runs on a background thread — use `SPSCQueue` and mutexes to cross thread boundaries
 
 ## Security and performance
@@ -90,23 +90,23 @@ Every feature or change must consider both:
 
 **Always write tests** for pure logic that can run on the host (no game server required).
 
-Host unit tests live in `src/test/` and are compiled separately from the AMXX module:
+Host unit tests live in `src/kz_global_api/test/` and are compiled separately from the AMXX module:
 
 ```bash
 bash scripts/run-tests.sh
 # or: zig build test -Dtest-only=true
 ```
 
-Current coverage: path-segment validation (`kz_path_validate.cpp`), KRP header validation (`krp_header_validate.cpp`).
+Current coverage: path-segment validation (`kz_path_validate.cpp`), KRP header validation and first-frame event ordering, replay UID selection, acknowledgment matching, and run event state.
 
-When adding testable logic, follow the existing pattern in `src/test/` — simple `expect()` helpers, no external test framework.
+When adding testable logic, follow the existing pattern in `src/kz_global_api/test/` — simple `expect()` helpers, no external test framework.
 
 WebSocket/API integration and replay playback require a staging game server; they are not covered by host tests.
 
 **CI** (`.github/workflows/ci.yml`) runs on every push/PR:
 1. Static checks: `bash scripts/lint-amxx.sh` (rejects `MF_GetAmxString` buffer misuse)
 2. Host unit tests: `zig build test -Dtest-only=true`
-3. Full Linux x86 module build via `./build.sh`
+3. Full Linux and Windows x86 module builds
 
 Run the full CI-equivalent checks locally before committing.
 
@@ -124,14 +124,14 @@ Cross-repo protocol reference (authoritative for WS message schemas):
 - `kz-global-api/docs/plugin-integration.md` — plugin-facing protocol requirements
 
 When to update:
-- **KRP format change** → `docs/replay-format.md` + `src/include/krp_format.h`
+- **KRP format change** → `docs/replay-format.md` + `src/kz_global_api/include/krp_format.h`
 - **New/changed Pawn native** → `addons/amxmodx/scripting/include/kz_global_api.inc`
 - **Server config or deployment change** → `docs/server-integration.md`
-- **New WS message type** → `src/include/kz_ws.h`, handler in `kz_ws_msgs.cpp`, and `kz-global-api/docs/websocket-protocol.md`
+- **New WS message type** → `src/kz_global_api/include/kz_ws_protocol.h`, handler in `kz_ws_msgs.cpp`, and `kz-global-api/docs/websocket-protocol.md`
 
 ## Adding a new WebSocket message type
 
-1. Add outbound/inbound constant to `WSMsgOut::` or `WSMsgIn::` in `src/include/kz_ws.h`
+1. Add outbound/inbound constant to `WSMsgOut::` or `WSMsgIn::` in `src/kz_global_api/include/kz_ws_protocol.h`
 2. Implement send logic (if outbound) or a handler function (if inbound) in `kz_ws_msgs.cpp`
 3. Register inbound handlers in the dispatch table in `kz_ws.cpp`
 4. Coordinate with `kz-global-api` — add the matching message type, handler, and test on the backend
@@ -139,7 +139,7 @@ When to update:
 
 ## Adding a new Pawn native
 
-1. Implement the native in `kz_natives.cpp` and declare it in `src/include/kz_natives.h`
+1. Implement the native in `kz_natives.cpp` and declare it in `src/kz_global_api/include/kz_natives.h`
 2. Register it in the natives table (same file)
 3. Add documentation and the function signature to `addons/amxmodx/scripting/include/kz_global_api.inc`
 4. If the native triggers a WS message, wire it through the existing queue/send path in `kz_ws.cpp`
@@ -147,9 +147,12 @@ When to update:
 ## Project layout
 
 ```
-src/                          C++ module source
-  include/                    Headers (kz_*, krp_*, amxxmodule.h, moduleconfig.h)
-  test/                       Host-side unit tests
+src/
+  kz_global_api/              WebSocket, replay, and Pawn API module
+    include/                  Global module headers
+    test/                     Host-side unit tests
+  kz_base/                    Checkpoints and movement helpers
+  shared/                     AMXX and engine integration
 addons/amxmodx/
   scripting/include/          Pawn API (.inc files)
   configs/kz_global.cfg       Default server CVars

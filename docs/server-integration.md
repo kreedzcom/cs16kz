@@ -186,11 +186,11 @@ The module exposes **Pawn natives** (see `addons/amxmodx/scripting/include/kz_gl
 | Run invalid (death, disconnect, restart, style violation) | `kz_api_run_rejected(id, true)` |
 | Player finishes with a valid time | `kz_api_run_finished(id, Float:time, bool:submit_run = true, char_prefix = 0)` |
 
-**Timer:** The module does **not** compute finish time. Your plugin must track elapsed time and **exclude pause time** (see `addons/amxmodx/scripting/kz_global_api_tests.sma` for a minimal example).
+**Timer:** Start each fresh run with zero checkpoints and zero gochecks. The gameplay plugin computes finish time. Your plugin must track elapsed time and **exclude pause time** (see `addons/amxmodx/scripting/kz_global_api_tests.sma` for a minimal example).
 
-**Pause:** On global API servers, pause is **forbidden by default** (`kz_api_allow_pause 0`). Your gameplay plugin must disable pause UI when the native returns `0`. If you enable pause for staging (`kz_api_allow_pause 1`), call `run_paused` / `run_unpaused` in sync with your in-game pause and exclude pause time from the finish timer. If you pause gameplay but forget the native, the replay keeps recording through the pause and the global API will reject the submission.
+**Pause:** On global API servers, pause is **forbidden by default** (`kz_api_allow_pause 0`). Your gameplay plugin must disable pause UI when the native returns `0`. If you enable pause for staging (`kz_api_allow_pause 1`), call `run_paused` / `run_unpaused` in sync with your in-game pause and exclude pause time from the finish timer. Coordinate the pause callbacks with the timer. The API validates replay structure and matches player, map, and checkpoint and gocheck counts. It does not derive elapsed time from the replay.
 
-**Map load / WR replay:** On every map load the module notifies the API (`MAP_CHANGE`), receives `MAP_INFO`, and fetches the WR replay via `GET_REPLAY` when no local `.krpz` exists. Cached replays load the SR bot from disk without re-downloading.
+**Map load / WR replay:** On every map load the module notifies the API (`MAP_CHANGE`), receives `MAP_INFO`, and requests a WR replay via `GET_REPLAY` when the local cache lacks a suitable replay. If the map has a pro WR, a cached nub replay is insufficient. The SR bot can otherwise use the best suitable cached replay.
 
 **Admin record deletion:** When the API broadcasts `DEL_RECORD_NOTIFY`, the module deletes local `.krpz`/`.krpr` files, resets the SR bot if needed, then loads the next-best local replay or re-fetches the WR.
 
@@ -255,7 +255,7 @@ Plugins that `#include <kz_global_api>` must match the loaded module version. A 
 | `Failed to install one or more hooks` | Missing ReHLDS/detour support; PLAYER_LEAVE or cvar enforcement may be broken |
 | `common.games gamedata could not be read` | AMX Mod X too old or misinstalled |
 | Plugin `set_fail_state` on load | Update `kz_global_api*.inc` to match module version |
-| Records never appear globally | Gameplay plugin not calling natives, or API rejecting mismatched time/replay/checkpoints |
+| Records never appear globally | Check run lifecycle callbacks, API time rules, and whether the uploaded replay validates and matches the submitted run |
 | `[KRP] run_finish: no file descriptor` | `run_finished` without a prior `run_started`, or run already rejected |
 | `[AC] Illegal …` in logs | Client or server cvars outside expected KZ values (informational; review cheats / configs) |
 | Player kicked: cross-community banned | Working as intended — API flagged the Steam ID |

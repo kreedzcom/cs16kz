@@ -44,15 +44,13 @@ Supported **OS / CPU** combinations are enforced in `build.zig`: **Linux or Wind
 
 ### Linux release example (project script)
 
-The included script cross-compiles to `x86-linux-gnu` and renames the shared object to the expected AMXX module filename:
+The included script builds the Linux x86 release modules:
 
 ```bash
 ./build.sh
 ```
 
-This runs:
-
-`zig build -Dtarget=x86-linux-gnu` and moves `zig-out/lib/libkz_global_api_amxx_i386.so` to `zig-out/lib/kz_global_api_amxx_i386.so`.
+Zig installs `kz_global_api_amxx_i386.so` and `kz_base_amxx_i386.so` directly under `zig-out/lib/`. Release archives include both modules and publish the HELLO version and source fingerprints in `kz-hello.txt`.
 
 ---
 
