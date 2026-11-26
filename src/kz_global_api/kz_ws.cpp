@@ -247,9 +247,8 @@ void kz_ws_start(std::string url, std::string token)
     g_websocket.enablePerMessageDeflate();
     g_websocket.setOnMessageCallback(kz_ws_onmessage);
     kz_ws_apply_auto_reconnect_policy();
-    g_websocket.start();
-
     g_websocket_state.store(WSState::Initialized);
+    g_websocket.start();
 }
 void kz_ws_stop(void)
 {
