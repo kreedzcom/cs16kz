@@ -245,6 +245,30 @@ Plugins that `#include <kz_global_api>` must match the loaded module version. A 
 
 ---
 
+## Running the plugin-to-API test
+
+From the module checkout on Linux x86-64 or Ubuntu under WSL2, run:
+
+```bash
+bash scripts/run-e2e.sh ../kz-global-api
+```
+
+Use the Linux x86 build prerequisites listed in the README, plus OpenSSL and a
+running Linux Docker daemon with Docker Compose. Under WSL2, use Linux checkouts
+for both repositories so the build scripts and Gradle wrapper have LF line endings.
+The first run downloads the dedicated server from Steam and builds the game and
+API images. Docker can reuse the game image layers on later runs.
+
+The script provisions a fresh PostgreSQL database, generates a test CA, and runs
+ReHLDS and AMX Mod X against the API over WSS. It checks two Pawn map-info
+callbacks, with an API restart between them, and checks that intentionally wrong
+expected metadata fails the assertion. It needs no production credentials or
+object storage access. The script removes the containers and database volume on
+exit and prints the location of the sanitized service logs on failure.
+
+Pull requests run the same test with the companion revision pinned in CI. Pass
+the path to your API checkout to test changes in both repositories together.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
