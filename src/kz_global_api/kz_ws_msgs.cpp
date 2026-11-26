@@ -321,7 +321,7 @@ static bool kz_ws_has_zstd_magic(const uint8_t* data, size_t len)
 
 static void kz_ws_delete_replay_files(const char* local_uid, const char* mapname);
 
-void kz_ws_delete_record_replay(const char* mapname, const char* local_uid)
+void kz_ws_delete_record_replay(const char* mapname, const char* local_uid, const char* record_id)
 {
     if (!mapname || !local_uid || !mapname[0] || !local_uid[0]
         || !kz_ws_valid_replay_segment(mapname) || !kz_ws_valid_replay_segment(local_uid))
@@ -329,10 +329,24 @@ void kz_ws_delete_record_replay(const char* mapname, const char* local_uid)
         return;
     }
 
-    kz_ws_delete_replay_files(local_uid, mapname);
+    const std::string local_record_id = kz_storage_get_record_id(local_uid);
+    const std::string target_id = record_id ? record_id : local_record_id;
+    const std::string cache_uid = target_id.empty() ? std::string(local_uid) : kz_replay_cache_uid(local_uid, target_id);
+    if (cache_uid.empty())
+    {
+        return;
+    }
+    if (!record_id || local_record_id == target_id)
+    {
+        kz_ws_release_active_upload(local_uid);
+        kz_storage_delete_by_value(local_uid, StorageTable::upload_queue);
+        kz_ws_delete_replay_files(local_uid, nullptr);
+    }
 
-    std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / local_uid;
-    path.replace_extension(".krpz");
+    std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / cache_uid;
+    path.replace_extension(KRP_EXT_COMPRESSED);
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
     kz_pb_drop_parsed_replay(path);
     kz_pb_stop_if_playing(path);
 
@@ -1030,7 +1044,7 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
 
     int64_t request_type = 0;
     std::string request;
-    if (!record_id || !record_id[0] || msg_id <= 0 ||
+    if (!record_id || kz_replay_cache_uid(local_uid, record_id).empty() || msg_id <= 0 ||
         !kz_storage_try_get_outgoing(msg_id, &request_type, &request) ||
         request_type != WSMsgOut::ADD_RECORD)
     {
@@ -1047,7 +1061,7 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
     replay.replace_extension(KRP_EXT_RAW);
     std::error_code ec;
     if (std::filesystem::exists(replay, ec) &&
-        kz_storage_save(0, StorageTable::upload_queue, [&](int64_t) { return std::string(local_uid); }).message)
+        kz_storage_save(0, StorageTable::upload_queue, [&](int64_t) { return std::string(local_uid); }, record_id).message)
     {
         kz_storage_delete(msg_id, StorageTable::outgoing_queue);
     }
@@ -1082,19 +1096,6 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
         // Always clean up the upload queue and active-uploads set — the server
         // accepted the upload regardless of whether local file operations succeed.
         auto cleanup = [&]() {
-            {
-                std::lock_guard<std::mutex> lock(g_retry_mtx);
-                auto it = g_retry_queue.begin();
-                while (it != g_retry_queue.end())
-                {
-                    if (it->table == StorageTable::upload_queue && strcmp(local_uid, it->message->c_str()) == 0)
-                    {
-                        g_retry_queue.erase(it);
-                        break;
-                    }
-                    ++it;
-                }
-            }
             kz_ws_release_active_upload(local_uid);
             kz_storage_delete_by_value(local_uid, StorageTable::upload_queue);
         };
@@ -1132,7 +1133,14 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
                 return nullptr;
             }
 
-            std::filesystem::path n_filepath = g_data_dir / "kz_global" / "replays" / mapname / local_uid;
+            const auto cache_uid = kz_replay_cache_uid(local_uid, kz_storage_get_record_id(local_uid));
+            if (cache_uid.empty())
+            {
+                kz_log(&g_ws_log, "[ACK] Missing record identity for %s", local_uid);
+                cleanup();
+                return nullptr;
+            }
+            std::filesystem::path n_filepath = g_data_dir / "kz_global" / "replays" / mapname / cache_uid;
             n_filepath.replace_extension(".krpz");
 
             std::error_code ec;
@@ -1228,7 +1236,15 @@ std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj)
         kz_ws_clear_replay_fetch_pending(map_name);
         return nullptr;
     }
-    return [url = std::string(url), mapname = std::string(map_name), uid = std::string(local_uid)]() {
+    const char* record_id = json_object_dotget_string(obj, "data.record_id");
+    const auto cache_uid = record_id ? kz_replay_cache_uid(local_uid, record_id) : std::string();
+    if (cache_uid.empty())
+    {
+        kz_ws_clear_replay_fetch_pending(map_name);
+        return nullptr;
+    }
+
+    return [url = std::string(url), mapname = std::string(map_name), uid = cache_uid]() {
         if (!FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
         {
             kz_ws_clear_replay_fetch_pending(mapname.c_str());
@@ -1253,9 +1269,9 @@ std::function<void()> kz_ws_ack_del_record_notify(JSON_Object* obj)
     const char* map_name = json_object_dotget_string(obj, "data.map_name");
     const char* local_uid = json_object_dotget_string(obj, "data.local_uid");
 
-    if (!map_name || !local_uid)
+    if (!map_name || !local_uid || !record_id || kz_replay_cache_uid(local_uid, record_id).empty())
     {
-        kz_log(&g_ws_log, "[DEL_RECORD_NOTIFY] Missing map_name or local_uid.");
+        kz_log(&g_ws_log, "[DEL_RECORD_NOTIFY] Missing or invalid replay identity.");
         return nullptr;
     }
     if (!kz_ws_valid_replay_segment(map_name) || !kz_ws_valid_replay_segment(local_uid))
@@ -1264,8 +1280,8 @@ std::function<void()> kz_ws_ack_del_record_notify(JSON_Object* obj)
         return nullptr;
     }
 
-    return [map = std::string(map_name), uid = std::string(local_uid), rid = std::string(record_id ? record_id : "")]() {
+    return [map = std::string(map_name), uid = std::string(local_uid), rid = std::string(record_id)]() {
         kz_log(&g_ws_log, "[DEL_RECORD_NOTIFY] record=%s map=%s uid=%s", rid.c_str(), map.c_str(), uid.c_str());
-        kz_ws_delete_record_replay(map.c_str(), uid.c_str());
+        kz_ws_delete_record_replay(map.c_str(), uid.c_str(), rid.c_str());
     };
 }

@@ -3,6 +3,26 @@
 #include <cstdlib>
 #include <limits>
 
+std::string kz_replay_cache_uid(const std::string& uid, const std::string& record_id)
+{
+    if (uid.empty() || uid.size() > 63 ||
+        uid.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != std::string::npos ||
+        record_id.size() != 36)
+    {
+        return {};
+    }
+    for (size_t i = 0; i < record_id.size(); ++i)
+    {
+        const char ch = record_id[i];
+        const bool separator = i == 8 || i == 13 || i == 18 || i == 23;
+        if (separator ? ch != '-' : !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')))
+        {
+            return {};
+        }
+    }
+    return uid + "_" + record_id;
+}
+
 bool kz_replay_parse_uid(const std::string& filename, uint8_t& run_class, uint32_t& time_ms)
 {
     std::string stem = filename;
