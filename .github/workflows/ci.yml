@@ -32,7 +32,18 @@ jobs:
         run: bash scripts/lint-amxx.sh
 
       - name: Fetch dependencies
-        run: zig build --fetch
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if zig build --fetch; then
+              exit 0
+            fi
+            if (( attempt < 3 )); then
+              echo "::warning::Zig dependency fetch failed on attempt ${attempt}/3. Retrying."
+              sleep "$((attempt * 5))"
+            fi
+          done
+          exit 1
 
       - name: Host unit tests
         run: zig build test -Dtest-only=true
