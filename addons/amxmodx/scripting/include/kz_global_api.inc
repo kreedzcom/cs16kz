@@ -82,6 +82,8 @@ native kz_api_run_gocheck(id);
 native kz_api_get_replay(mapname[]);
 
 /**
- * Deletes local replay files for a record (same as DEL_RECORD_NOTIFY handler).
+ * Deletes a cached replay and any matching pending local upload.
+ * Supply the record UUID to identify a replay downloaded from another server.
+ * An omitted UUID uses the local submission's stored identity.
  */
-native kz_api_del_record(mapname[], local_uid[]);
+native kz_api_del_record(mapname[], local_uid[], const record_id[] = "");

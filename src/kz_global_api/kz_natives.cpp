@@ -5,6 +5,7 @@
 #include "kz_util.h"
 #include "kz_cvars.h"
 #include "kz_replay.h"
+#include "kz_replay_uid.h"
 #include "kz_storage.h"
 #include "kz_natives.h"
 
@@ -239,7 +240,20 @@ static cell AMX_NATIVE_CALL kz_api_del_record(AMX* amx, cell* params)
         return 0;
     }
 
-    kz_ws_delete_record_replay(mapname, local_uid);
+    const char* record_id = nullptr;
+    if (params[0] / sizeof(cell) >= 3)
+    {
+        const char* value = MF_GetAmxString(amx, params[3], 2, &len);
+        if (value && value[0])
+        {
+            if (kz_replay_cache_uid(local_uid, value).empty())
+            {
+                return 0;
+            }
+            record_id = value;
+        }
+    }
+    kz_ws_delete_record_replay(mapname, local_uid, record_id);
     return 1;
 }
 
