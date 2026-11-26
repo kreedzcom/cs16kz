@@ -192,7 +192,7 @@ The module exposes **Pawn natives** (see `addons/amxmodx/scripting/include/kz_gl
 
 **Map load / WR replay:** The module announces the current map (`MAP_CHANGE`) on map load and after reconnecting. Map announcements are connection state and use no durable queue entry. For a known map, the API returns `MAP_INFO` and the module requests a WR replay via `GET_REPLAY` when the local cache lacks a suitable replay. If the map has a pro WR, a cached nub replay is insufficient.
 
-**Admin record deletion:** When the API broadcasts `DEL_RECORD_NOTIFY`, the module deletes the cached replay for that record UUID and clears a matching pending local upload. If the SR bot was playing the replay, it loads another eligible local replay or requests the WR.
+**Admin record deletion:** When the API broadcasts `DEL_RECORD_NOTIFY`, the module deletes the cached replay for that record UUID, discards responses and downloads for it that predate the notification, and clears a matching pending local upload. If the SR bot was playing the replay, it loads another eligible local replay or requests the WR.
 
 **Reconnect:** After a WebSocket reconnect, pending record submissions and replay uploads are retried immediately. Missed broadcasts while offline are resynced on the next map load or reconnect `HELLO`/`MAP_INFO`.
 
