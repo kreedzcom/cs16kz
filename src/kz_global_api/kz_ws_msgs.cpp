@@ -704,6 +704,10 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
             };
         }
     }
+    else if (msg_type == WSMsgOut::WANT_MAP_INFO)
+    {
+        callback = [msg_id]() { kz_api_cancel_map_callback(msg_id); };
+    }
     else if (msg_type == WSMsgOut::GET_REPLAY)
     {
         const char* map_name = json_object_dotget_string(json_value_get_object(stored_val), "data.map_name");
@@ -814,11 +818,10 @@ std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
 
     int64_t msg_id = (int64_t)json_object_get_number(obj, "msg_id");
     return [szWR_Pro, szWR_Noob, szMap, map_props, msg_id]() mutable {
-        auto it = g_plugin_callbacks.find(msg_id);
-
-        if (it != g_plugin_callbacks.end())
+        const int fwd = kz_api_take_map_callback(msg_id);
+        if (fwd != -1)
         {
-            kz_call_map_info_forward(it->second.fwd, szMap, szWR_Pro, szWR_Noob, map_props, ARRAYSIZE(map_props));
+            kz_call_map_info_forward(fwd, szMap, szWR_Pro, szWR_Noob, map_props, ARRAYSIZE(map_props));
         }
         else if (FStrEq(szMap, STRING(gpGlobals->mapname)))
         {

@@ -153,12 +153,7 @@ void kz_storage_clear()
         }
         if (it->msg_type == WSMsgOut::WANT_MAP_INFO)
         {
-            auto p = g_plugin_callbacks.find(it->msg_id);
-            if (p != g_plugin_callbacks.end())
-            {
-                MF_UnregisterSPForward(p->second.fwd);
-                g_plugin_callbacks.erase(p);
-            }
+            kz_api_cancel_map_callback(it->msg_id);
         }
         if (delete_msg)
         {

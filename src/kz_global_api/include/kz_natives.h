@@ -9,12 +9,12 @@ typedef struct
     bool updated;
 } map_info_t;
 
-typedef struct { int fwd; std::vector<int> data; } plugin_callback_data;
-
 extern int g_fwd_bot_run_started;
 extern int g_fwd_bot_run_finished;
 extern map_info_t g_current_map_info;
-extern std::map<int64_t, plugin_callback_data> g_plugin_callbacks;
+extern int kz_api_take_map_callback(int64_t msg_id);
+extern void kz_api_cancel_map_callback(int64_t msg_id);
+extern void kz_api_clear_map_callbacks();
 
 extern void kz_api_add_forwards(void);
 extern void kz_api_add_natives(void);

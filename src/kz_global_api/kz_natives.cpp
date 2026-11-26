@@ -11,6 +11,7 @@
 extern bool g_initialized; // main.cpp; false = module disabled (no ReHLDS / gamedata hooks)
 
 map_info_t g_current_map_info;
+static std::map<int64_t, int> g_plugin_callbacks;
 void kz_call_map_info_forward(int fwd, const char* map, const char* pro, const char* noob, int* map_props, size_t map_props_size)
 {
     auto props = MF_PrepareCellArray(map_props, map_props_size);
@@ -97,7 +98,7 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
         MF_UnregisterSPForward(fwd);
         return 0;
     }
-    g_plugin_callbacks[entry.msg_id] = { fwd, std::vector<int>() };
+    g_plugin_callbacks.emplace(entry.msg_id, fwd);
     kz_ws_queue_msg(entry.message, entry.msg_id);
     return 1;
 }
@@ -277,7 +278,29 @@ AMX_NATIVE_INFO kz_api_natives[] =
 int g_fwd_bot_run_started = -1;
 int g_fwd_bot_run_finished = -1;
 
-std::map<int64_t, plugin_callback_data> g_plugin_callbacks;
+int kz_api_take_map_callback(int64_t msg_id)
+{
+    const auto entry = g_plugin_callbacks.extract(msg_id);
+    return entry.empty() ? -1 : entry.mapped();
+}
+
+void kz_api_cancel_map_callback(int64_t msg_id)
+{
+    const int fwd = kz_api_take_map_callback(msg_id);
+    if (fwd != -1)
+    {
+        MF_UnregisterSPForward(fwd);
+    }
+}
+
+void kz_api_clear_map_callbacks()
+{
+    for (const auto& entry : g_plugin_callbacks)
+    {
+        MF_UnregisterSPForward(entry.second);
+    }
+    g_plugin_callbacks.clear();
+}
 
 void kz_api_add_forwards(void)
 {
