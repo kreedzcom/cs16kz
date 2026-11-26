@@ -8,32 +8,32 @@ public plugin_init()
 {
     register_concmd("get_map_details", "get_map_details");
 
-	register_concmd("run_start",   "cmd_start");
-	register_concmd("run_pause",   "cmd_pause")
-	register_concmd("run_unpause", "cmd_unpause");
-	register_concmd("run_pause_forbidden", "cmd_pause_forbidden");
-	register_concmd("run_reject",  "cmd_reject")
-	register_concmd("run_finish",  "cmd_finish");
+    register_concmd("run_start",   "cmd_start");
+    register_concmd("run_pause",   "cmd_pause");
+    register_concmd("run_unpause", "cmd_unpause");
+    register_concmd("run_pause_forbidden", "cmd_pause_forbidden");
+    register_concmd("run_reject",  "cmd_reject");
+    register_concmd("run_finish",  "cmd_finish");
 
-	kz_api_get_map_details("de_dust2",     "map_details_handler");
-	kz_api_get_map_details("kz_longjump2", "map_details_handler");
-	kz_api_get_map_details("bkz_goldbhop", "map_details_handler");
+    kz_api_get_map_details("de_dust2",     "map_details_handler");
+    kz_api_get_map_details("kz_longjump2", "map_details_handler");
+    kz_api_get_map_details("bkz_goldbhop", "map_details_handler");
 }
 public get_map_details(id, level, cid)
 {
     new szArg[64];
-    read_argv(1, szArg, charsmax(szArg);
+    read_argv(1, szArg, charsmax(szArg));
     kz_api_get_map_details(szArg, "map_details_handler");
 
     return 1;
 }
 public map_details_handler(mapname[], wr_pro[], wr_noob[], map_props[3])
 {
-	new szType[32], szLength[32], szDifficulty[32];
+    new szType[32], szLength[32], szDifficulty[32];
 
-	kz_api_get_map_type(map_props[0], szType, charsmax(szType));
-	kz_api_get_map_length(map_props[1], szLength, charsmax(szLength));
-	kz_api_get_map_difficulty(map_props[2], szDifficulty, charsmax(szDifficulty));
+    kz_api_get_map_type(map_props[0], szType, charsmax(szType));
+    kz_api_get_map_length(map_props[1], szLength, charsmax(szLength));
+    kz_api_get_map_difficulty(map_props[2], szDifficulty, charsmax(szDifficulty));
 
     console_print(0, "--------------------");
     console_print(0, "[*] Map name:       %s",        mapname);

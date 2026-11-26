@@ -454,7 +454,7 @@ static bool kz_ws_fetch_to_file(const ReplayDownload& job, const ix::HttpRequest
         }
         if (written < magic.size())
         {
-            const size_t prefix = std::min(magic.size() - written, chunk.size());
+            const size_t prefix = (std::min)(magic.size() - written, chunk.size());
             memcpy(magic.data() + written, chunk.data(), prefix);
         }
         written += chunk.size();

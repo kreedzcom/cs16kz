@@ -20,7 +20,7 @@ public:
             return 0;
         }
         const auto id = ++next_id_;
-        active_.insert_or_assign(uid, Attempt{id, Clock::time_point::max()});
+        active_.insert_or_assign(uid, Attempt{id, (Clock::time_point::max)()});
         return id;
     }
 

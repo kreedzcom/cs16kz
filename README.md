@@ -56,6 +56,8 @@ Zig installs `kz_global_api_amxx_i386.so` and `kz_base_amxx_i386.so` directly un
 
 ## Testing
 
+On Linux with Zig and the zlib and zstd development headers installed, run `bash scripts/verify-replay-contract.sh /path/to/kz-global-api`. This checks concurrent SQLite persistence and native replay bytes against the companion backend at its checked-out commit. The CI job pins the backend commit, which must be available on the companion remote before publishing this branch.
+
 **CI** runs on every push/PR: host unit tests, native API lint, and Linux and Windows x86 module builds (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). A `v*` tag publishes both platforms as a GitHub Release (see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
 Local host tests (no full AMXX dependency fetch required for the shell script):

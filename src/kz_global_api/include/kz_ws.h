@@ -37,15 +37,6 @@ typedef struct
     uint64_t    id;
 } ws_upload;
 
-typedef struct
-{
-    char        local_uid[64];
-    uint64_t    id;
-    int32_t     chunk_checksum;
-    uint64_t    chunk_index;
-    uint64_t    chunk_total;
-} ws_uchunk_header;
-
 #pragma pack(pop)
 
 typedef struct {
