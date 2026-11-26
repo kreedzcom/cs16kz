@@ -11,7 +11,7 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $OutDir = Join-Path $Root "zig-out"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$Exe = Join-Path $OutDir "kz_global_api_tests.exe"
+$Exe = Join-Path $OutDir "kz_global_api_tests-$([Guid]::NewGuid()).exe"
 $Sources = @(
     "src/kz_global_api/kz_path_validate.cpp",
     "src/kz_global_api/krp_header_validate.cpp",
@@ -25,8 +25,15 @@ $Sources = @(
 Push-Location $Root
 try {
     & $Zig c++ -std=c++17 -Isrc/kz_global_api/include @Sources -o $Exe
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
     & $Exe
+    exit $LASTEXITCODE
 }
 finally {
     Pop-Location
+    if (Test-Path -LiteralPath $Exe) {
+        Remove-Item -LiteralPath $Exe
+    }
 }
