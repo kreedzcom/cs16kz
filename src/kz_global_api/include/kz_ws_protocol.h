@@ -33,6 +33,12 @@ constexpr bool kz_ws_valid_boolean(int value)
     return value == 0 || value == 1;
 }
 
+// Earlier APIs sent only status on a successful upload.
+constexpr bool kz_ws_replay_ack_is_playable(bool has_playable, int playable)
+{
+    return !has_playable || playable == 1;
+}
+
 constexpr bool kz_ws_matches_ack(int64_t request, int response)
 {
     if (response == WSMsgIn::ERROR_MSG)

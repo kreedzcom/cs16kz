@@ -1100,12 +1100,25 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
     snprintf(local_uid, sizeof(local_uid), "%s", uid_ptr);
     if (status)
     {
+        const bool has_playable = json_object_dotget_value(obj, "data.playable") != nullptr;
+        const int playable = json_object_dotget_boolean(obj, "data.playable");
+        if (has_playable && !kz_ws_valid_boolean(playable))
+        {
+            return nullptr;
+        }
+
         // Always clean up the upload queue and active-uploads set — the server
         // accepted the upload regardless of whether local file operations succeed.
         auto cleanup = [&]() {
             kz_ws_release_active_upload(local_uid);
             kz_storage_delete_by_value(local_uid, StorageTable::upload_queue);
         };
+        if (!kz_ws_replay_ack_is_playable(has_playable, playable))
+        {
+            kz_ws_delete_replay_files(local_uid, nullptr);
+            cleanup();
+            return nullptr;
+        }
 
         std::string mapname;
         bool file_moved = false;
