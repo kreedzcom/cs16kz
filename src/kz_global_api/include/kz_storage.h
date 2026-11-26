@@ -2,6 +2,7 @@
 #define KZ_STORAGE_H
 
 #include <filesystem>
+#include <functional>
 
 enum class StorageTable : int
 {
@@ -9,7 +10,7 @@ enum class StorageTable : int
     upload_queue,
 };
 
-typedef struct
+struct retry_msg
 {
     int32_t retry_count;
     int64_t msg_type;
@@ -17,7 +18,7 @@ typedef struct
     int64_t timestamp;
     StorageTable table;
     std::shared_ptr<std::string> message;
-} retry_msg;
+};
 
 extern std::filesystem::path g_data_dir;
 
@@ -29,8 +30,7 @@ extern void kz_storage_uninit(void);
 extern void kz_storage_load();
 extern void kz_storage_clear();
 extern void kz_storage_requeue_all_pending(void);
-extern int64_t kz_storage_get_next_id(StorageTable table);
-extern void kz_storage_save(std::shared_ptr<std::string> text, int64_t msg_type, int64_t msg_id, StorageTable table);
+extern retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::function<std::string(int64_t)>& build);
 extern void kz_storage_delete(int64_t msg_id, StorageTable table);
 extern void kz_storage_delete_by_value(const std::string& value, StorageTable table);
 extern void kz_storage_batch_delete(const std::vector<int64_t>& ids, StorageTable table);

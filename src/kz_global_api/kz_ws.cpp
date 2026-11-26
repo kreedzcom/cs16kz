@@ -267,6 +267,16 @@ void kz_ws_build_msg(int type, JSON_Value* data_val, std::string& msg, int64_t m
     }
     json_value_free(root_val);
 }
+retry_msg kz_ws_store_msg(int type, JSON_Value* data_val, kz::queue<log_entry>* log_queue)
+{
+    std::unique_ptr<JSON_Value, decltype(&json_value_free)> data(data_val, json_value_free);
+    return kz_storage_save(type, StorageTable::outgoing_queue, [&](int64_t id) {
+        std::string message;
+        kz_ws_build_msg(type, data.release(), message, id, log_queue);
+        return message;
+    });
+}
+
 void kz_ws_queue_msg(std::shared_ptr<std::string> msg, int64_t msg_id)
 {
     if(!msg || msg->empty())

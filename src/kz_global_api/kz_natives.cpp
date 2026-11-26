@@ -91,17 +91,14 @@ static cell AMX_NATIVE_CALL kz_api_get_map_details(AMX* amx, cell* params)
     JSON_Object* data_obj = json_value_get_object(data_val);
     json_object_set_string(data_obj, "map_name", mapname);
 
-    std::string message;
-    int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
-
-    g_plugin_callbacks[msg_id] = { fwd, std::vector<int>() };
-
-    kz_ws_build_msg(WSMsgOut::WANT_MAP_INFO, data_val, message, msg_id);
-
-    auto shared_msg = std::make_shared<std::string>(std::move(message));
-
-    kz_storage_save(shared_msg, WSMsgOut::WANT_MAP_INFO, msg_id, StorageTable::outgoing_queue);
-    kz_ws_queue_msg(shared_msg, msg_id);
+    const auto entry = kz_ws_store_msg(WSMsgOut::WANT_MAP_INFO, data_val);
+    if (!entry.message)
+    {
+        MF_UnregisterSPForward(fwd);
+        return 0;
+    }
+    g_plugin_callbacks[entry.msg_id] = { fwd, std::vector<int>() };
+    kz_ws_queue_msg(entry.message, entry.msg_id);
     return 1;
 }
 

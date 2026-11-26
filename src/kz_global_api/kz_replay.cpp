@@ -913,14 +913,15 @@ static void kz_rp_writer_thread(void)
                             json_object_set_number(data_obj, "gochecks",    s_gochecks[id]);
                             json_object_set_string(data_obj, "local_uid",   uid_str);
 
-                            std::string message;
-                            uint64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
-                            kz_ws_build_msg(WSMsgOut::ADD_RECORD, data_val, message, msg_id, &g_replay_writer_log);
-
-                            auto shared_msg = std::make_shared<std::string>(std::move(message));
-
-                            kz_storage_save(shared_msg, WSMsgOut::ADD_RECORD, msg_id, StorageTable::outgoing_queue);
-                            kz_ws_send_msg(*shared_msg, msg_id);
+                            const auto entry = kz_ws_store_msg(WSMsgOut::ADD_RECORD, data_val, &g_replay_writer_log);
+                            if (entry.message)
+                            {
+                                kz_ws_send_msg(*entry.message, entry.msg_id);
+                            }
+                            else
+                            {
+                                kz_log(&g_replay_writer_log, "[KRP] Submission not queued. Raw replay retained for %s", uid_str);
+                            }
                         }
                     }
                     else
