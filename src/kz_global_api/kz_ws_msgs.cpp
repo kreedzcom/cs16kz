@@ -79,6 +79,7 @@ static int64_t g_replay_map_request_floor = 0;
 static std::map<std::string, int64_t> g_replay_invalidations; // game thread only
 static std::set<std::string> g_replay_fetch_pending;
 static std::set<std::string> g_replay_pro_upgrade_failed;
+static std::atomic_bool g_session_sync_pending{false};
 
 static bool kz_ws_map_has_pro_wr(void)
 {
@@ -653,6 +654,17 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
     {
         return;
     }
+    if (g_session_sync_pending.exchange(false))
+    {
+        kz_ws_event_map_change();
+        for (int id = 1; id <= gpGlobals->maxClients; ++id)
+        {
+            if (!g_players[id].is_bot && MF_IsPlayerIngame(id))
+            {
+                kz_ws_event_client_connect(INDEXENT(id));
+            }
+        }
+    }
     while (g_outgoing_queue.front() && tasks_done < max_tasks_per_frame)
     {
         std::shared_ptr<std::string> message = *g_outgoing_queue.front();
@@ -874,6 +886,7 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
         return nullptr;
     }
     kz_storage_requeue_all_pending();
+    g_session_sync_pending.store(true);
     g_websocket.setPingInterval(heartbeat_interval);
     g_websocket.setMinWaitBetweenReconnectionRetries(5000);
     g_websocket.setMaxWaitBetweenReconnectionRetries(15000);
@@ -892,23 +905,15 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
         json_value_free(temp_root);
     }
 
+    if (!update_map)
+    {
+        return nullptr;
+    }
     return [update_map = std::move(update_map)]() {
-        if (g_websocket_state.load() != WSState::Connected)
-        {
-            return;
-        }
-        for (int id = 1; id <= gpGlobals->maxClients; ++id)
-        {
-            if (!g_players[id].is_bot && MF_IsPlayerIngame(id))
-            {
-                kz_ws_event_client_connect(INDEXENT(id));
-            }
-        }
-        if (update_map)
+        if (g_websocket_state.load() == WSState::Connected)
         {
             update_map();
         }
-        kz_ws_event_map_change();
     };
 }
 std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
