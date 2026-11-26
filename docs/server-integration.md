@@ -181,7 +181,7 @@ The module exposes **Pawn natives** (see `addons/amxmodx/scripting/include/kz_gl
 | Game event | Native |
 |------------|--------|
 | Player starts a timed run | `kz_api_run_started(id)` |
-| Player pauses (menu / +pause) | `kz_api_run_paused(id)` — returns `0` when pause is forbidden |
+| Player pauses (menu / +pause) | `kz_api_run_paused(id)` — returns `0` when pause is disabled or the run is still waiting for its first frame |
 | Player unpauses | `kz_api_run_unpaused(id)` |
 | Run invalid (death, disconnect, restart, style violation) | `kz_api_run_rejected(id, true)` |
 | Player finishes with a valid time | `kz_api_run_finished(id, Float:time, bool:submit_run = true, char_prefix = 0)` |
