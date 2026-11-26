@@ -353,13 +353,16 @@ bool kz_ws_try_fetch_replay(const char* mapname)
     JSON_Object* data_obj = json_value_get_object(data_val);
     json_object_set_string(data_obj, "map_name", mapname);
 
-    std::string message;
-    int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
-    kz_ws_build_msg(WSMsgOut::GET_REPLAY, data_val, message, msg_id);
-
-    auto shared_msg = std::make_shared<std::string>(std::move(message));
-    kz_storage_save(shared_msg, WSMsgOut::GET_REPLAY, msg_id, StorageTable::outgoing_queue);
-    kz_ws_queue_msg(shared_msg, msg_id);
+    const auto entry = kz_ws_store_msg(WSMsgOut::GET_REPLAY, data_val);
+    if (entry.message)
+    {
+        kz_ws_queue_msg(entry.message, entry.msg_id);
+    }
+    else
+    {
+        kz_ws_clear_replay_fetch_pending(mapname);
+        return false;
+    }
     return true;
 }
 
@@ -507,8 +510,11 @@ static bool kz_ws_requeue_replay_upload(const char* local_uid)
     snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", local_uid);
     snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
 
-    auto shared_uid = std::make_shared<std::string>(local_uid);
-    kz_storage_save(shared_uid, 0, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
+    if (!kz_storage_save(0, StorageTable::upload_queue, [&](int64_t) { return std::string(local_uid); }).message)
+    {
+        kz_ws_release_active_upload(local_uid);
+        return false;
+    }
     if (!kz_rp_compress_and_upload_async(metadata))
     {
         kz_ws_release_active_upload(local_uid);
@@ -648,18 +654,15 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     JSON_Value* data_val = json_value_init_object();
     JSON_Object* data_obj = json_value_get_object(data_val);
 
-    std::string message;
-    int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
     json_object_set_string(data_obj, "nickname", g_players[id].nickname);
     json_object_set_string(data_obj, "steamid",  g_players[id].steamid);
 
-    kz_ws_build_msg(WSMsgOut::PLAYER_JOIN, data_val, message, msg_id);
-
-    auto shared_msg = std::make_shared<std::string>(std::move(message));
-
-    kz_storage_save(shared_msg, WSMsgOut::PLAYER_JOIN, msg_id, StorageTable::outgoing_queue);
-    kz_ws_queue_msg(shared_msg, msg_id);
+    const auto entry = kz_ws_store_msg(WSMsgOut::PLAYER_JOIN, data_val);
+    if (entry.message)
+    {
+        kz_ws_queue_msg(entry.message, entry.msg_id);
+    }
 }
 void kz_ws_event_client_disconnect(edict_t* pEntity)
 {
@@ -672,35 +675,29 @@ void kz_ws_event_client_disconnect(edict_t* pEntity)
     JSON_Value* data_val = json_value_init_object();
     JSON_Object* data_obj = json_value_get_object(data_val);
 
-    std::string message;
-    int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
     json_object_set_string(data_obj, "steamid", g_players[id].steamid);
 
-    kz_ws_build_msg(WSMsgOut::PLAYER_LEAVE, data_val, message, msg_id);
-
-    auto shared_msg = std::make_shared<std::string>(std::move(message));
-
-    kz_storage_save(shared_msg, WSMsgOut::PLAYER_LEAVE, msg_id, StorageTable::outgoing_queue);
-    kz_ws_queue_msg(shared_msg, msg_id);
+    const auto entry = kz_ws_store_msg(WSMsgOut::PLAYER_LEAVE, data_val);
+    if (entry.message)
+    {
+        kz_ws_queue_msg(entry.message, entry.msg_id);
+    }
 }
 void kz_ws_event_map_change(void)
 {
     JSON_Value* data_val = json_value_init_object();
     JSON_Object* data_obj = json_value_get_object(data_val);
 
-    std::string message;
-    int64_t msg_id = kz_storage_get_next_id(StorageTable::outgoing_queue);
 
     krp_header header = kz_rp_get_header();
     json_object_set_string(data_obj, "map_name", header.map.name);
 
-    kz_ws_build_msg(WSMsgOut::MAP_CHANGE, data_val, message, msg_id);
-
-    auto shared_msg = std::make_shared<std::string>(std::move(message));
-
-    kz_storage_save(shared_msg, WSMsgOut::MAP_CHANGE, msg_id, StorageTable::outgoing_queue);
-    kz_ws_queue_msg(shared_msg, msg_id);
+    const auto entry = kz_ws_store_msg(WSMsgOut::MAP_CHANGE, data_val);
+    if (entry.message)
+    {
+        kz_ws_queue_msg(entry.message, entry.msg_id);
+    }
 }
 std::function<void()> kz_ws_ack_invalid(JSON_Object* obj)
 {
@@ -940,14 +937,17 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
             g_active_uploads.insert(local_uid);
         }
 
-        auto shared_msg = std::make_shared<std::string>(metadata.local_uid);
 
         if (kz_api_log_upload->value > 0.0f)
         {
             kz_log(&g_ws_log, "[UPLOAD] File: %s", std::filesystem::relative(replay, g_data_dir).string().c_str());
         }
 
-        kz_storage_save(shared_msg, 0, kz_storage_get_next_id(StorageTable::upload_queue), StorageTable::upload_queue);
+        if (!kz_storage_save(0, StorageTable::upload_queue, [&](int64_t) { return std::string(metadata.local_uid); }).message)
+        {
+            kz_ws_release_active_upload(local_uid);
+            return nullptr;
+        }
         return [metadata]() {
                 if (!kz_rp_compress_and_upload_async(metadata))
                 {

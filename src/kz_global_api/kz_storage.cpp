@@ -16,7 +16,7 @@
 std::filesystem::path g_data_dir;
 
 std::mutex g_retry_mtx;
-std::vector<retry_msg> g_retry_queue(64);
+std::vector<retry_msg> g_retry_queue;
 
 static thread_local SQLite::Database* kz_storage_database = nullptr;
 static thread_local bool kz_storage_initialized = false;
@@ -181,85 +181,61 @@ void kz_storage_requeue_all_pending(void)
     }
 }
 
-int64_t kz_storage_get_next_id(StorageTable table)
+retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::function<std::string(int64_t)>& build)
 {
+    if (!kz_storage_database)
+    {
+        kz_storage_init();
+        if (!kz_storage_database)
+        {
+            return {};
+        }
+    }
+
     try
-    {
-        char statement[64];
-        switch (table)
-        {
-            case StorageTable::outgoing_queue:
-            {
-                snprintf(statement, sizeof(statement), "SELECT seq FROM sqlite_sequence WHERE name='outgoing_queue'");
-                break;
-            }
-            case StorageTable::upload_queue:
-            {
-                snprintf(statement, sizeof(statement), "SELECT seq FROM sqlite_sequence WHERE name='upload_queue'");
-                break;
-            }
-        }
-        int64_t next_id = 1;
-        SQLite::Statement query(*kz_storage_database, statement);
-        if(query.executeStep())
-        {
-            next_id = query.getColumn(0).getInt64() + 1;
-        }
-        return next_id;
-    }
-    catch (const std::exception& e)
-    {
-        kz_log(&g_storage_log, "[Storage] get_next_id: %s", e.what());
-    }
-    return 1;
-}
-void kz_storage_save(std::shared_ptr<std::string> text, int64_t msg_type, int64_t msg_id, StorageTable table)
-{
-    if (table == StorageTable::outgoing_queue || table == StorageTable::upload_queue)
     {
         std::lock_guard<std::mutex> lock(g_retry_mtx);
-        
-        static int64_t last_ts;
-        auto now = std::chrono::system_clock::now();
-        auto ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
-
-        if ((ts - last_ts) < 5)
+        if (g_retry_queue.size() == g_retry_queue.capacity())
         {
-            last_ts = ts;
-            ts += 5;
+            g_retry_queue.reserve(std::max<size_t>(64, g_retry_queue.size() * 2));
         }
-        else
+        SQLite::Transaction transaction(*kz_storage_database);
+        const bool outgoing = table == StorageTable::outgoing_queue;
+        SQLite::Statement insert(*kz_storage_database, outgoing
+            ? "INSERT INTO outgoing_queue (msg_type, msg) VALUES (?, '')"
+            : "INSERT INTO upload_queue (msg_type, local_uid) VALUES (?, '')");
+        insert.bind(1, static_cast<long long>(msg_type));
+        insert.exec();
+        const int64_t id = kz_storage_database->getLastInsertRowid();
+        // The JSON library serializes IDs through double.
+        if (outgoing && id > 9007199254740991LL)
         {
-            last_ts = ts;
+            throw std::runtime_error("outgoing ID exceeds the exact JSON integer range");
         }
-        g_retry_queue.push_back({0, msg_type, msg_id, ts, table, text});
-    }
-    try
-    {
-        char statement[1024];
-        switch (table)
+        auto message = std::make_shared<std::string>(build(id));
+        if (message->empty())
         {
-            case StorageTable::outgoing_queue:
-            {
-                snprintf(statement, sizeof(statement), "INSERT INTO outgoing_queue (id, msg_type, msg) VALUES (?, ?, ?)");
-                break;
-            }
-            case StorageTable::upload_queue:
-            {
-                snprintf(statement, sizeof(statement), "INSERT INTO upload_queue (id, msg_type, local_uid) VALUES (?, ?, ?)");
-                break;
-            }
+            throw std::runtime_error("cannot persist an empty message");
         }
 
-        SQLite::Statement query(*kz_storage_database, statement);
-        query.bind(1, static_cast<long long>(msg_id));
-        query.bind(2, static_cast<long long>(msg_type));
-        query.bind(3, *text);
-        query.exec();
+        SQLite::Statement update(*kz_storage_database, outgoing
+            ? "UPDATE outgoing_queue SET msg = ? WHERE id = ?"
+            : "UPDATE upload_queue SET local_uid = ? WHERE id = ?");
+        update.bind(1, *message);
+        update.bind(2, static_cast<long long>(id));
+        update.exec();
+        transaction.commit();
+
+        const auto now = std::chrono::system_clock::now().time_since_epoch();
+        const auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now).count();
+        const retry_msg entry{0, msg_type, id, timestamp, table, message};
+        g_retry_queue.push_back(entry);
+        return entry;
     }
     catch (const std::exception& e)
     {
         kz_log(&g_storage_log, "[Storage] save: %s", e.what());
+        return {};
     }
 }
 void kz_storage_delete(int64_t msg_id, StorageTable table)
