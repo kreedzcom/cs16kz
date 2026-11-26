@@ -41,18 +41,29 @@ jobs:
             zlib1g-dev:i386
 
       - name: Build Linux x86
-        run: zig build -Dtarget=x86-linux-gnu -Doptimize=ReleaseFast --prefix zig-out-linux
+        shell: bash
+        run: zig build -Dtarget=x86-linux-gnu -Doptimize=ReleaseFast --prefix "$RUNNER_TEMP/kz-linux" 2>&1 | tee "$RUNNER_TEMP/kz-linux.log"
 
       - name: Build Windows x86
-        run: zig build -Dtarget=x86-windows-gnu -Doptimize=ReleaseFast --prefix zig-out-windows
+        shell: bash
+        run: zig build -Dtarget=x86-windows-gnu -Doptimize=ReleaseFast --prefix "$RUNNER_TEMP/kz-windows" 2>&1 | tee "$RUNNER_TEMP/kz-windows.log"
 
       - name: Pack release archives
         run: |
           set -euo pipefail
+          mkdir -p dist
+          read -r linux_version linux_checksum < <(awk '$1=="kz_global_api" && $3=="md5" { print $2, $4 }' "$RUNNER_TEMP/kz-linux.log")
+          read -r windows_version windows_checksum < <(awk '$1=="kz_global_api" && $3=="md5" { print $2, $4 }' "$RUNNER_TEMP/kz-windows.log")
+          test "$linux_version" = "$windows_version"
+          [[ "$linux_checksum" =~ ^[0-9a-f]{32}$ && "$windows_checksum" =~ ^[0-9a-f]{32}$ ]]
+          printf 'plugin_version=%s\nchecksum_linux=%s\nchecksum_windows=%s\n' \
+            "$linux_version" "$linux_checksum" "$windows_checksum" > dist/kz-hello.txt
+
           pack() {
             local prefix="$1"
             local archive="$2"
-            shift 2
+            local format="$3"
+            shift 3
             local stage
             stage="$(mktemp -d)"
             mkdir -p \
@@ -62,6 +73,7 @@ jobs:
               "$stage/addons/amxmodx/scripting/include"
             local bin
             for bin in "$@"; do
+              file -b "$prefix/$bin" | grep -E "$format" >/dev/null
               cp "$prefix/$bin" "$stage/addons/amxmodx/modules/"
             done
             cp addons/amxmodx/configs/kz_global.cfg "$stage/addons/amxmodx/configs/"
@@ -71,12 +83,15 @@ jobs:
               addons/amxmodx/scripting/include/kz_global_api_stocks.inc \
               addons/amxmodx/scripting/include/kz_global_api_version.inc \
               "$stage/addons/amxmodx/scripting/include/"
-            mkdir -p dist
-            (cd "$stage" && zip -r "$GITHUB_WORKSPACE/dist/$archive" .)
+            local output="$GITHUB_WORKSPACE/dist/$archive"
+            (cd "$stage" && zip -r "$output" .)
+            unzip -tq "$output"
+            diff <(cd "$stage" && find addons -type f | sort) \
+              <(unzip -Z1 "$output" | grep -v '/$' | sort)
           }
-          pack zig-out-linux kz-global-linux-x86.zip \
+          pack "$RUNNER_TEMP/kz-linux" kz-global-linux-x86.zip '^ELF 32-bit.*Intel 80386' \
             lib/kz_global_api_amxx_i386.so lib/kz_base_amxx_i386.so
-          pack zig-out-windows kz-global-windows-x86.zip \
+          pack "$RUNNER_TEMP/kz-windows" kz-global-windows-x86.zip '^PE32 .*DLL.*Intel 80386' \
             bin/kz_global_api_amxx.dll bin/kz_base_amxx.dll
 
       - name: Publish GitHub Release
@@ -86,5 +101,6 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             dist/kz-global-linux-x86.zip \
             dist/kz-global-windows-x86.zip \
+            dist/kz-hello.txt \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes
