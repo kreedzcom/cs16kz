@@ -72,11 +72,6 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
         case ix::WebSocketMessageType::Message:
         {
             const char* c_data = msg->str.c_str();
-            if(kz_api_log_recv->value > 0.0f)
-            {
-                kz_log(&g_ws_log, "[WS] Received: %s", c_data);
-            }
-
             JSON_Value* root_val = json_parse_string(c_data);
             if(!root_val)
             {
@@ -93,6 +88,10 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             JSON_Object* root_obj = json_value_get_object(root_val);
             int msg_type = (int)json_object_get_number(root_obj, "msg_type");
             int64_t msg_id = (int64_t)json_object_get_number(root_obj, "msg_id");
+            if (kz_api_log_recv->value > 0.0f)
+            {
+                kz_log(&g_ws_log, "[WS] Received type=%d id=%lld", msg_type, static_cast<long long>(msg_id));
+            }
 
             std::function<void()> fn = nullptr;
             auto it = g_callback_map.find(msg_type);
