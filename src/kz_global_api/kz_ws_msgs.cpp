@@ -15,6 +15,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <array>
+#include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <ixwebsocket/IXHttpClient.h>
 #include <set>
@@ -69,6 +72,7 @@ size_t kz_ws_active_upload_count()
 }
 
 static std::mutex g_replay_fetch_mtx;
+static uint64_t g_download_map_generation = 0; // game thread only
 static std::set<std::string> g_replay_fetch_pending;
 static std::set<std::string> g_replay_pro_upgrade_failed;
 
@@ -283,6 +287,7 @@ void kz_ws_on_map_loaded(bool force)
     }
 
     snprintf(s_last_map_loaded, sizeof(s_last_map_loaded), "%s", mapname);
+    ++g_download_map_generation;
 
     g_early_mapchange = false;
     g_wait_after_load = 1.0f;
@@ -383,91 +388,201 @@ bool kz_ws_try_fetch_replay(const char* mapname)
     return true;
 }
 
-static void kz_ws_download_replay_async(std::string url, std::string mapname, std::string local_uid)
+struct ReplayDownload
 {
-    std::thread([url = std::move(url), mapname = std::move(mapname), local_uid = std::move(local_uid)]() {
-        std::vector<uint8_t> body;
-        bool ok = false;
+    std::string url;
+    std::string mapname;
+    std::string uid;
+    std::filesystem::path target;
+    std::filesystem::path temporary;
+    uint64_t map_generation;
+    bool downloaded = false;
+};
 
-        if (url.rfind("https://", 0) == 0)
+static constexpr size_t KZ_DOWNLOAD_QUEUE_CAPACITY = 16;
+static std::mutex g_download_mtx;
+static std::condition_variable g_download_cv;
+static std::deque<ReplayDownload> g_download_pending;
+static std::deque<ReplayDownload> g_download_complete;
+static ix::HttpRequestArgsPtr g_download_request;
+static std::thread g_download_worker;
+static bool g_download_accepting = false;
+static uint64_t g_download_sequence = 0;
+
+static bool kz_ws_fetch_to_file(const ReplayDownload& job, const ix::HttpRequestArgsPtr& args)
+{
+    std::error_code ec;
+    std::filesystem::create_directories(job.target.parent_path(), ec);
+    if (ec)
+    {
+        return false;
+    }
+    std::unique_ptr<FILE, decltype(&fclose)> output(fopen(job.temporary.string().c_str(), "wb"), fclose);
+    if (!output)
+    {
+        return false;
+    }
+
+    ix::HttpClient client;
+    client.setTLSOptions(kz_ws_replay_download_tls_options());
+    args->connectTimeout = 10;
+    args->transferTimeout = 60;
+    args->followRedirects = false;
+    args->compress = false;
+    std::array<uint8_t, 4> magic{};
+    size_t written = 0;
+    args->onChunkCallback = [&](const std::string& chunk) {
+        if (chunk.size() > KZ_MAX_REPLAY_DOWNLOAD_BYTES - written ||
+            fwrite(chunk.data(), 1, chunk.size(), output.get()) != chunk.size())
         {
-            ix::HttpClient client;
-            client.setTLSOptions(kz_ws_replay_download_tls_options());
-            auto args = std::make_shared<ix::HttpRequestArgs>();
-            args->followRedirects = false;
-            auto response = client.get(url, args);
-            if (response && response->errorCode == ix::HttpErrorCode::Ok && response->statusCode == 200)
-            {
-                const auto& payload = response->body;
-                if (payload.size() <= KZ_MAX_REPLAY_DOWNLOAD_BYTES && kz_ws_has_zstd_magic(
-                        reinterpret_cast<const uint8_t*>(payload.data()), payload.size()))
-                {
-                    body.assign(payload.begin(), payload.end());
-                    ok = true;
-                }
-            }
+            args->cancel.store(true);
+            return;
         }
+        if (written < magic.size())
+        {
+            const size_t prefix = std::min(magic.size() - written, chunk.size());
+            memcpy(magic.data() + written, chunk.data(), prefix);
+        }
+        written += chunk.size();
+    };
+    const auto response = client.get(job.url, args);
+    const bool closed = fclose(output.release()) == 0;
+    return closed && !args->cancel.load() && response &&
+        response->errorCode == ix::HttpErrorCode::Ok && response->statusCode == 200 &&
+        written >= magic.size() && kz_ws_has_zstd_magic(magic.data(), magic.size());
+}
 
-        if (!g_incoming_queue.try_push([ok, body = std::move(body), mapname, local_uid]() mutable {
-            if (!ok)
-            {
-                kz_log(&g_ws_log, "[GET_REPLAY] Download failed for map=%s uid=%s", mapname.c_str(), local_uid.c_str());
-                kz_ws_schedule_replay_download_retry(mapname);
-                return;
-            }
+static void kz_ws_download_worker_loop()
+{
+    for (;;)
+    {
+        std::unique_lock<std::mutex> lock(g_download_mtx);
+        g_download_cv.wait(lock, [] { return !g_download_accepting || !g_download_pending.empty(); });
+        if (!g_download_accepting)
+        {
+            return;
+        }
+        ReplayDownload job = std::move(g_download_pending.front());
+        g_download_pending.pop_front();
+        const auto args = std::make_shared<ix::HttpRequestArgs>();
+        args->cancel.store(false);
+        g_download_request = args;
+        lock.unlock();
 
-            if (!FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
-            {
-                kz_ws_clear_replay_fetch_pending(mapname.c_str());
-                return;
-            }
-
-            std::filesystem::path out_path = g_data_dir / "kz_global" / "replays" / mapname / local_uid;
-            out_path.replace_extension(".krpz");
-
+        try
+        {
+            job.downloaded = kz_ws_fetch_to_file(job, args);
+        }
+        catch (const std::exception&)
+        {
+            job.downloaded = false;
+        }
+        args->onChunkCallback = {};
+        if (!job.downloaded)
+        {
             std::error_code ec;
-            std::filesystem::create_directories(out_path.parent_path(), ec);
-            if (ec)
-            {
-                kz_log(&g_ws_log, "[GET_REPLAY] Failed to create directory: %s", ec.message().c_str());
-                kz_ws_schedule_replay_download_retry(mapname);
-                return;
-            }
-
-            FILE* fp = fopen(out_path.string().c_str(), "wb");
-            if (!fp)
-            {
-                kz_log(&g_ws_log, "[GET_REPLAY] Failed to write replay: %s", out_path.string().c_str());
-                kz_ws_schedule_replay_download_retry(mapname);
-                return;
-            }
-            const size_t written = fwrite(body.data(), 1, body.size(), fp);
-            fclose(fp);
-
-            if (written != body.size())
-            {
-                std::filesystem::remove(out_path, ec);
-                kz_log(&g_ws_log, "[GET_REPLAY] Incomplete write for %s", local_uid.c_str());
-                kz_ws_schedule_replay_download_retry(mapname);
-                return;
-            }
-
-            kz_log(&g_ws_log, "[GET_REPLAY] Saved replay: %s", std::filesystem::relative(out_path, g_data_dir).string().c_str());
-            kz_ws_clear_replay_fetch_pending(mapname.c_str());
-            kz_ws_clear_replay_pro_upgrade_failed(mapname.c_str());
-            {
-                std::lock_guard<std::mutex> lock(g_replay_download_retry_mtx);
-                g_replay_download_retries.erase(
-                    std::remove_if(g_replay_download_retries.begin(), g_replay_download_retries.end(),
-                        [&mapname](const replay_download_retry& r) { return r.mapname == mapname; }),
-                    g_replay_download_retries.end());
-            }
-            kz_pb_parse_file_async(out_path);
-        }))
-        {
-            kz_ws_schedule_replay_download_retry(mapname);
+            std::filesystem::remove(job.temporary, ec);
         }
-    }).detach();
+
+        lock.lock();
+        g_download_request.reset();
+        g_download_complete.push_back(std::move(job));
+    }
+}
+
+void kz_ws_start_download_worker()
+{
+    std::lock_guard<std::mutex> lock(g_download_mtx);
+    g_download_accepting = true;
+    g_download_worker = std::thread(kz_ws_download_worker_loop);
+}
+
+void kz_ws_stop_download_worker()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_download_mtx);
+        g_download_accepting = false;
+        g_download_pending.clear();
+        if (g_download_request)
+        {
+            g_download_request->cancel.store(true);
+        }
+    }
+    g_download_cv.notify_one();
+    if (g_download_worker.joinable())
+    {
+        g_download_worker.join();
+    }
+    for (const auto& job : g_download_complete)
+    {
+        std::error_code ec;
+        std::filesystem::remove(job.temporary, ec);
+    }
+    g_download_complete.clear();
+}
+
+static bool kz_ws_download_replay_async(std::string url, std::string mapname, std::string local_uid)
+{
+    std::lock_guard<std::mutex> lock(g_download_mtx);
+    if (!g_download_accepting || url.rfind("https://", 0) != 0 ||
+        g_download_pending.size() + g_download_complete.size() + (g_download_request ? 1 : 0) >= KZ_DOWNLOAD_QUEUE_CAPACITY)
+    {
+        return false;
+    }
+    auto target = g_data_dir / "kz_global" / "replays" / mapname / local_uid;
+    target.replace_extension(KRP_EXT_COMPRESSED);
+    auto temporary = target;
+    temporary += ".part." + std::to_string(++g_download_sequence);
+    g_download_pending.push_back({std::move(url), std::move(mapname), std::move(local_uid),
+                                  std::move(target), std::move(temporary), g_download_map_generation});
+    g_download_cv.notify_one();
+    return true;
+}
+
+static void kz_ws_process_download_completion()
+{
+    ReplayDownload job;
+    {
+        std::lock_guard<std::mutex> lock(g_download_mtx);
+        if (g_download_complete.empty())
+        {
+            return;
+        }
+        job = std::move(g_download_complete.front());
+        g_download_complete.pop_front();
+    }
+
+    std::error_code ec;
+    if (job.map_generation != g_download_map_generation ||
+        !FStrEq(job.mapname.c_str(), STRING(gpGlobals->mapname)))
+    {
+        std::filesystem::remove(job.temporary, ec);
+        return;
+    }
+
+    if (job.downloaded && !std::filesystem::exists(job.target, ec))
+    {
+        std::filesystem::rename(job.temporary, job.target, ec);
+        job.downloaded = !ec;
+    }
+    std::filesystem::remove(job.temporary, ec);
+    if (!job.downloaded)
+    {
+        kz_log(nullptr, "[GET_REPLAY] Download failed for map=%s uid=%s", job.mapname.c_str(), job.uid.c_str());
+        kz_ws_schedule_replay_download_retry(job.mapname);
+        return;
+    }
+
+    kz_ws_clear_replay_fetch_pending(job.mapname.c_str());
+    kz_ws_clear_replay_pro_upgrade_failed(job.mapname.c_str());
+    {
+        std::lock_guard<std::mutex> lock(g_replay_download_retry_mtx);
+        g_replay_download_retries.erase(
+            std::remove_if(g_replay_download_retries.begin(), g_replay_download_retries.end(),
+                [&](const replay_download_retry& retry) { return retry.mapname == job.mapname; }),
+            g_replay_download_retries.end());
+    }
+    kz_pb_parse_file_async(job.target);
 }
 
 static void kz_ws_delete_replay_files(const char* local_uid, const char* mapname)
@@ -518,6 +633,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
         g_incoming_queue.pop();
         tasks_done++;
     }
+    kz_ws_process_download_completion();
     kz_ws_process_replay_download_retries();
     if (g_websocket_state.load() != WSState::Connected || g_websocket.getReadyState() != ix::ReadyState::Open)
     {
@@ -1112,16 +1228,23 @@ std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj)
         kz_ws_clear_replay_fetch_pending(map_name);
         return nullptr;
     }
-    if (kz_ws_map_has_pro_wr() && local_uid[0] == '1' && local_uid[1] == '_')
-    {
-        kz_log(&g_ws_log, "[GET_REPLAY_ACK] Ignoring nub replay for map=%s while pro WR exists.", map_name);
-        g_replay_pro_upgrade_failed.insert(map_name);
-        kz_ws_clear_replay_fetch_pending(map_name);
-        return nullptr;
-    }
-
-    kz_ws_download_replay_async(url, map_name, local_uid);
-    return nullptr;
+    return [url = std::string(url), mapname = std::string(map_name), uid = std::string(local_uid)]() {
+        if (!FStrEq(mapname.c_str(), STRING(gpGlobals->mapname)))
+        {
+            kz_ws_clear_replay_fetch_pending(mapname.c_str());
+            return;
+        }
+        if (kz_ws_map_has_pro_wr() && uid.compare(0, 2, "1_") == 0)
+        {
+            g_replay_pro_upgrade_failed.insert(mapname);
+            kz_ws_clear_replay_fetch_pending(mapname.c_str());
+            return;
+        }
+        if (!kz_ws_download_replay_async(url, mapname, uid))
+        {
+            kz_ws_schedule_replay_download_retry(mapname);
+        }
+    };
 }
 
 std::function<void()> kz_ws_ack_del_record_notify(JSON_Object* obj)
