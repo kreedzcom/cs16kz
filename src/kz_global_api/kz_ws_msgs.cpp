@@ -674,8 +674,7 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
         {
             if (ts - pending.timestamp <= static_cast<int>(kz_api_retries_delay->value) ||
                 pending.retry_count > static_cast<int>(kz_api_retries_max->value) ||
-                pending.message->empty() ||
-                pending.msg_type == WSMsgOut::PLAYER_LEAVE || pending.msg_type == WSMsgOut::MAP_CHANGE)
+                pending.message->empty())
             {
                 continue;
             }
@@ -778,11 +777,9 @@ void kz_ws_event_map_change(void)
     krp_header header = kz_rp_get_header();
     json_object_set_string(data_obj, "map_name", header.map.name);
 
-    const auto entry = kz_ws_store_msg(WSMsgOut::MAP_CHANGE, data_val);
-    if (entry.message)
-    {
-        kz_ws_queue_msg(entry.message, entry.msg_id);
-    }
+    std::string event;
+    kz_ws_build_msg(WSMsgOut::MAP_CHANGE, data_val, event, 0);
+    kz_ws_send_msg(event, 0);
 }
 std::function<void()> kz_ws_ack_invalid(JSON_Object* obj)
 {
@@ -902,6 +899,7 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
         {
             update_map();
         }
+        kz_ws_event_map_change();
     };
 }
 std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)

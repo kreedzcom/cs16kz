@@ -41,7 +41,6 @@ constexpr bool kz_ws_matches_ack(int64_t request, int response)
     }
     switch (request)
     {
-        case WSMsgOut::MAP_CHANGE:
         case WSMsgOut::WANT_MAP_INFO: return response == WSMsgIn::MAP_INFO;
         case WSMsgOut::PLAYER_JOIN:  return response == WSMsgOut::PLAYER_JOIN;
         case WSMsgOut::ADD_RECORD:   return response == WSMsgIn::RECORD_ACK;
