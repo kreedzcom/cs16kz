@@ -47,13 +47,28 @@ jobs:
             zlib1g-dev:i386
 
       - name: Build AMXX module (Linux x86)
-        run: ./build.sh
+        shell: bash
+        run: |
+          bash build.sh 2>&1 | tee "$RUNNER_TEMP/kz-linux.log"
+          awk '$1 == "kz_global_api" && $3 == "md5" { print $2, $4 }' \
+            "$RUNNER_TEMP/kz-linux.log" > zig-out/lib/kz-e2e-build.txt
+          test -s zig-out/lib/kz-e2e-build.txt
 
       - name: Verify Linux artifacts
         run: |
           test -f zig-out/lib/kz_global_api_amxx_i386.so
           test -f zig-out/lib/kz_base_amxx_i386.so
           file zig-out/lib/kz_global_api_amxx_i386.so zig-out/lib/kz_base_amxx_i386.so
+
+      - name: Upload Linux modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: kz-global-linux-x86
+          path: |
+            zig-out/lib/kz_global_api_amxx_i386.so
+            zig-out/lib/kz_base_amxx_i386.so
+            zig-out/lib/kz-e2e-build.txt
+          retention-days: 14
 
       - name: Build AMXX modules (Windows x86)
         run: zig build -Dtarget=x86-windows-gnu -Doptimize=ReleaseFast --prefix zig-out-windows
@@ -64,15 +79,6 @@ jobs:
           test -f zig-out-windows/bin/kz_base_amxx.dll
           file zig-out-windows/bin/kz_global_api_amxx.dll zig-out-windows/bin/kz_base_amxx.dll
 
-      - name: Upload Linux modules
-        uses: actions/upload-artifact@v4
-        with:
-          name: kz-global-linux-x86
-          path: |
-            zig-out/lib/kz_global_api_amxx_i386.so
-            zig-out/lib/kz_base_amxx_i386.so
-          retention-days: 14
-
       - name: Upload Windows modules
         uses: actions/upload-artifact@v4
         with:
@@ -81,3 +87,44 @@ jobs:
             zig-out-windows/bin/kz_global_api_amxx.dll
             zig-out-windows/bin/kz_base_amxx.dll
           retention-days: 14
+
+  e2e:
+    name: Game server and API end-to-end
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: kreedzcom/kz-global-api
+          ref: 2922ebde180edd469872b7d1be4338f588808b46
+          path: companion-api
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: kz-global-linux-x86
+          path: linux-modules
+      - uses: docker/setup-buildx-action@v3
+      - name: Prepare cached game server image
+        uses: docker/build-push-action@v6
+        with:
+          context: scripts/e2e
+          platforms: linux/amd64
+          tags: kz-e2e-game:ci
+          load: true
+          cache-from: type=gha,scope=kz-e2e-game
+          cache-to: type=gha,mode=max,scope=kz-e2e-game
+      - name: Test WSS round trip and reconnect
+        env:
+          KZ_E2E_GAME_IMAGE: kz-e2e-game:ci
+          KZ_E2E_MODULE_DIR: linux-modules
+          KZ_E2E_LOG_DIR: ${{ runner.temp }}/kz-e2e-logs
+        run: bash scripts/run-e2e.sh companion-api
+      - name: Upload E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kz-e2e-logs
+          path: ${{ runner.temp }}/kz-e2e-logs
+          retention-days: 7
