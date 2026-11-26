@@ -18,6 +18,8 @@ void FN_AMXX_ATTACH()
 {
     g_pEdicts = (*g_engfuncs.pfnPEntityOfEntIndex)(0);
 
+    MF_RegisterFunction(reinterpret_cast<void*>(kz_base_reset_checkpoints), "kz_base_reset_checkpoints");
+
     kz_register_client_command("checkpoint", kz_cmd_checkpoint, false);
     kz_register_client_command("cp",         kz_cmd_checkpoint, false);
 
@@ -60,6 +62,10 @@ int FN_DispatchSpawn(edict_t* pent)
 }
 void FN_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax)
 {
+    for (int id = 1; id <= clientMax; ++id)
+    {
+        kz_base_reset_checkpoints(id);
+    }
     kz_mpbhop_init();
     RETURN_META(MRES_IGNORED);
 }
@@ -77,11 +83,13 @@ void FN_ServerDeactivate_Post(void)
 /***************************************************************************************************************/
 void FN_ClientPutInServer_Post(edict_t* pEntity)
 {
+    kz_base_reset_checkpoints(indexOfEdict(pEntity));
     kz_mpbhop_ClientPutInServer(pEntity);
     RETURN_META(MRES_IGNORED);
 }
 void FN_ClientDisconnect(edict_t* pEntity)
 {
+    kz_base_reset_checkpoints(indexOfEdict(pEntity));
     kz_mpbhop_ClientDisconnected(pEntity);
     RETURN_META(MRES_IGNORED);
 }

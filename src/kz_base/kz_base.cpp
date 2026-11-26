@@ -6,7 +6,26 @@
 #include "kz_util.h"
 #include "kz_mpbhop.h"
 
+#include <algorithm>
+
 kz_player_t g_players[KZ_MAX_PLAYERS + 1];
+
+void kz_base_reset_checkpoints(int id)
+{
+    if (!is_player(id))
+    {
+        return;
+    }
+    auto& player = g_players[id];
+    const kz_checkpoint_t empty{Vector(0.0f, 0.0f, 0.0f), Vector(0.0f, 0.0f, 0.0f)};
+    std::fill_n(player.checkpoints, KZ_MAX_CHECKPOINT_CACHE, empty);
+    std::fill_n(player.paused_checkpoints, KZ_MAX_CHECKPOINT_CACHE, empty);
+    player.cp_count = 0;
+    player.cp_index = 0;
+    player.tp_count = 0;
+    player.paused_cp_count = 0;
+    player.paused_cp_index = 0;
+}
 
 void kz_cmd_checkpoint(edict_t* pEntity)
 {

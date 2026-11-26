@@ -72,6 +72,11 @@ int kz_rp_run_started(int id)
     }
     g_capture_state[id] = KzRunState::Recording;
     g_capture_lost_event[id] = false;
+    auto reset_checkpoints = reinterpret_cast<void (*)(int)>(MF_RequestFunction("kz_base_reset_checkpoints"));
+    if (reset_checkpoints)
+    {
+        reset_checkpoints(id);
+    }
     g_replay_writer_cv.notify_one();
     return 1;
 }

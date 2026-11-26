@@ -34,6 +34,7 @@ typedef struct
 
 extern kz_player_t g_players[KZ_MAX_PLAYERS + 1];
 
+extern void kz_base_reset_checkpoints(int id);
 extern void kz_cmd_checkpoint(edict_t* pEntity);
 extern void kz_cmd_gocheck(edict_t* pEntity);
 #endif
