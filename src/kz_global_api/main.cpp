@@ -398,6 +398,7 @@ void KZ_SV_DropClient(edict_t* client)
         return;
     }
 
+    kz_rp_run_rejected(id, false);
     kz_ws_event_client_disconnect(client);
 
     if (g_early_mapchange)

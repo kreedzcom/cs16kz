@@ -1,5 +1,10 @@
 #include <cstdio>
 #include "kz_ws_protocol.h"
+#include "kz_run_state.h"
+
+static_assert(!kz_run_accepts_events(KzRunState::Idle));
+static_assert(kz_run_accepts_events(KzRunState::Recording));
+static_assert(!kz_run_accepts_events(KzRunState::Paused));
 
 static_assert(kz_ws_matches_ack(WSMsgOut::ADD_RECORD, WSMsgIn::RECORD_ACK));
 static_assert(!kz_ws_matches_ack(WSMsgOut::ADD_RECORD, WSMsgIn::FILE_ACK));
