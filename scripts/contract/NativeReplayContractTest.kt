@@ -73,7 +73,7 @@ class NativeReplayContractTest {
         normal.handle(reconnected, envelope(4, pro))
         val stillSame = replies().first().data.jsonObject.getValue("id")
         val stagedProId = Uuid.parse(firstProId.jsonPrimitive.content)
-        ReplayService(r2, metrics, security, dispatcher)
+        val interruptedStage = ReplayService(r2, metrics, security, dispatcher)
             .stageReplay(stagedProId, File(fixtures, "pro.krpz").readBytes())
         for (label in listOf("pro", "nub")) {
             val chunks = fixtures.listFiles { _, filename -> filename.startsWith("$label.") && filename.endsWith(".chunk") }!!
@@ -92,17 +92,19 @@ class NativeReplayContractTest {
         assertEquals(MsgType.ERROR, firstReplies()[1].msgType)
         assertTrue(firstReplies()[1].data.jsonObject.getValue("retryable").jsonPrimitive.boolean)
         assertEquals(4, replies().count {
-            it.msgType == MsgType.FILE_ACK && it.data.jsonObject.getValue("status").jsonPrimitive.boolean
+            it.msgType == MsgType.FILE_ACK && it.data.jsonObject.getValue("status").jsonPrimitive.boolean &&
+                it.data.jsonObject.getValue("playable").jsonPrimitive.boolean
         })
         assertEquals(3, r2.putCalls.size)
-        assertEquals(2, r2.putCalls.count { (key, _) -> key == "replays/$stagedProId.krpz" })
-        assertEquals(2, r2.putCalls.map { it.first }.toSet().size)
+        assertEquals(2, r2.putCalls.count { (key, _) -> key.startsWith("replays/$stagedProId/") })
+        assertEquals(3, r2.putCalls.map { it.first }.toSet().size)
         for (label in listOf("pro", "nub")) {
             val expected = File(fixtures, "$label.krpz").readBytes()
             assertTrue(r2.putCalls.any { (_, bytes) -> bytes.contentEquals(expected) })
         }
         transaction {
             assertEquals(2L, MapRecordsTable.selectAll().count())
+            assertFalse(MapRecordsTable.selectAll().any { it[MapRecordsTable.replayR2Key] == interruptedStage })
             assertEquals(setOf("pro", "nub"), WorldRecordsTable.selectAll().map { it[WorldRecordsTable.category] }.toSet())
         }
     }
