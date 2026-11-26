@@ -6,6 +6,9 @@
 static_assert(!kz_run_accepts_events(KzRunState::Idle));
 static_assert(kz_run_accepts_events(KzRunState::Recording));
 static_assert(!kz_run_accepts_events(KzRunState::Paused));
+static_assert(!kz_run_can_pause(KzRunState::Recording, false));
+static_assert(kz_run_can_pause(KzRunState::Recording, true));
+static_assert(!kz_run_can_pause(KzRunState::Paused, true));
 
 static_assert(!kz_ws_valid_boolean(-1));
 static_assert(kz_ws_valid_boolean(0));

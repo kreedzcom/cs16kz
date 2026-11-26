@@ -26,6 +26,7 @@ static krp_header g_header; // guarded by g_header_mtx; use kz_rp_get_header()
 static std::mutex g_header_mtx;
 krp_packet g_current_frame[33];
 static KzRunState g_capture_state[33]; // game thread only
+static bool g_capture_has_frame[33];
 static bool g_capture_lost_event[33];
 std::atomic<bool> g_krp_running;
 
@@ -72,6 +73,7 @@ int kz_rp_run_started(int id)
         return 0;
     }
     g_capture_state[id] = KzRunState::Recording;
+    g_capture_has_frame[id] = false;
     g_capture_lost_event[id] = false;
     auto reset_checkpoints = reinterpret_cast<void (*)(int)>(MF_RequestFunction("kz_base_reset_checkpoints"));
     if (reset_checkpoints)
@@ -127,7 +129,7 @@ int kz_rp_run_gocheck(int id)
 }
 int kz_rp_run_paused(int id)
 {
-    if (g_capture_state[id] != KzRunState::Recording)
+    if (!kz_run_can_pause(g_capture_state[id], g_capture_has_frame[id]))
     {
         return 0;
     }
@@ -173,6 +175,7 @@ int kz_rp_run_unpaused(int id)
         return 0;
     }
     g_capture_state[id] = KzRunState::Recording;
+    g_capture_has_frame[id] = false;
     g_replay_writer_cv.notify_one();
     return 1;
 }
@@ -420,6 +423,7 @@ void kz_rp_write_frame(int id)
     }
     else
     {
+        g_capture_has_frame[id] = true;
         g_replay_writer_cv.notify_one();
     }
 }
