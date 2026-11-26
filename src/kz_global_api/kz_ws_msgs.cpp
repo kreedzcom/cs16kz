@@ -737,9 +737,11 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
     if (msg_type == WSMsgOut::ADD_RECORD)
     {
         const char* r_uid = json_object_dotget_string(json_value_get_object(stored_val), "data.local_uid");
-        if (r_uid)
+        const int retryable = json_object_dotget_boolean(obj, "data.retryable");
+        if (retryable == 0 && r_uid && kz_ws_valid_replay_segment(r_uid))
         {
-            callback = [msg = std::string(message), uid = std::string(r_uid)]() {
+            callback = [msg_id, msg = std::string(message), uid = std::string(r_uid)]() {
+                kz_storage_delete(msg_id, StorageTable::outgoing_queue);
                 kz_ws_delete_replay_files(uid.c_str(), nullptr);
                 kz_storage_delete_by_value(uid, StorageTable::upload_queue);
                 {
@@ -907,8 +909,8 @@ std::function<void()> kz_ws_ack_player_join(JSON_Object* obj)
 }
 std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
 {
-    ACK_CHECK_MISSING(data.local_uid);
-
+    const auto msg_id = static_cast<int64_t>(json_object_get_number(obj, "msg_id"));
+    const char* record_id = json_object_dotget_string(obj, "data.id");
     const char* local_uid = json_object_dotget_string(obj, "data.local_uid");
     if (!local_uid || !local_uid[0])
     {
@@ -918,6 +920,21 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
     if (!kz_ws_valid_replay_segment(local_uid))
     {
         kz_log(&g_ws_log, "[kz_ws_ack_record_ack] Invalid local_uid.");
+        return nullptr;
+    }
+
+    int64_t request_type = 0;
+    std::string request;
+    if (!record_id || !record_id[0] || msg_id <= 0 ||
+        !kz_storage_try_get_outgoing(msg_id, &request_type, &request) ||
+        request_type != WSMsgOut::ADD_RECORD)
+    {
+        return nullptr;
+    }
+    std::unique_ptr<JSON_Value, decltype(&json_value_free)> stored(json_parse_string(request.c_str()), json_value_free);
+    const char* expected_uid = json_object_dotget_string(json_value_get_object(stored.get()), "data.local_uid");
+    if (!expected_uid || strcmp(local_uid, expected_uid) != 0)
+    {
         return nullptr;
     }
 
@@ -948,6 +965,7 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
             kz_ws_release_active_upload(local_uid);
             return nullptr;
         }
+        kz_storage_delete(msg_id, StorageTable::outgoing_queue);
         return [metadata]() {
                 if (!kz_rp_compress_and_upload_async(metadata))
                 {
