@@ -139,6 +139,10 @@ void FN_AMXX_PLUGINSLOADED()
     kz_api_add_forwards();
     kz_storage_load();
 }
+void FN_AMXX_PLUGINSUNLOADING()
+{
+    kz_api_clear_map_callbacks();
+}
 void FN_GameShutdown()
 {
     kz_log_flush(-1);
