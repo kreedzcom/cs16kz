@@ -190,7 +190,7 @@ The module exposes **Pawn natives** (see `addons/amxmodx/scripting/include/kz_gl
 
 **Pause:** On global API servers, pause is **forbidden by default** (`kz_api_allow_pause 0`). Your gameplay plugin must disable pause UI when the native returns `0`. If you enable pause for staging (`kz_api_allow_pause 1`), call `run_paused` / `run_unpaused` in sync with your in-game pause and exclude pause time from the finish timer. Coordinate the pause callbacks with the timer. The API validates replay structure and matches player, map, and checkpoint and gocheck counts. It does not derive elapsed time from the replay.
 
-**Map load / WR replay:** On every map load the module notifies the API (`MAP_CHANGE`), receives `MAP_INFO`, and requests a WR replay via `GET_REPLAY` when the local cache lacks a suitable replay. If the map has a pro WR, a cached nub replay is insufficient. The SR bot can otherwise use the best suitable cached replay.
+**Map load / WR replay:** The module announces the current map (`MAP_CHANGE`) on map load and after reconnecting. Map announcements are connection state and use no durable queue entry. For a known map, the API returns `MAP_INFO` and the module requests a WR replay via `GET_REPLAY` when the local cache lacks a suitable replay. If the map has a pro WR, a cached nub replay is insufficient.
 
 **Admin record deletion:** When the API broadcasts `DEL_RECORD_NOTIFY`, the module deletes the cached replay for that record UUID and clears a matching pending local upload. If the SR bot was playing the replay, it loads another eligible local replay or requests the WR.
 

@@ -100,9 +100,10 @@ void kz_storage_load()
     try
     {
         kz_storage_database->exec("PRAGMA wal_checkpoint(TRUNCATE);");
-        SQLite::Statement discard_presence(*kz_storage_database, "DELETE FROM outgoing_queue WHERE msg_type IN (?, ?)");
+        SQLite::Statement discard_presence(*kz_storage_database, "DELETE FROM outgoing_queue WHERE msg_type IN (?, ?, ?)");
         discard_presence.bind(1, WSMsgOut::PLAYER_JOIN);
         discard_presence.bind(2, WSMsgOut::PLAYER_LEAVE);
+        discard_presence.bind(3, WSMsgOut::MAP_CHANGE);
         discard_presence.exec();
         SQLite::Statement outgoing(*kz_storage_database, "SELECT id, msg_type, msg, created_at FROM outgoing_queue");
         SQLite::Statement upload(*kz_storage_database, "SELECT id, msg_type, local_uid, created_at FROM upload_queue");
