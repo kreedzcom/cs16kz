@@ -50,6 +50,8 @@ static void kz_ws_build_hello(std::string& out)
     kz_ws_build_msg(WSMsgOut::HELLO, data_val, out, 0);
 }
 
+static void kz_ws_send_text(const std::string& msg, int64_t msg_id);
+
 static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
 {
     switch(msg->type)
@@ -59,13 +61,12 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
             g_ws_auto_reconnect_allowed.store(true);
             g_websocket.enableAutomaticReconnection();
             kz_storage_init();
-            kz_storage_requeue_all_pending();
             kz_log(&g_ws_log, "[WS] Connection established.");
-            g_websocket_state.store(WSState::Connected);
+            g_websocket_state.store(WSState::Admitting);
 
             std::string hello;
             kz_ws_build_hello(hello);
-            kz_ws_send_msg(hello, 0);
+            kz_ws_send_text(hello, 0);
             break;
         }
         case ix::WebSocketMessageType::Message:
@@ -297,6 +298,14 @@ void kz_ws_queue_msg(std::shared_ptr<std::string> msg, int64_t msg_id)
     return;
 }
 void kz_ws_send_msg(std::string& msg, int64_t msg_id)
+{
+    if (g_websocket_state.load() == WSState::Connected)
+    {
+        kz_ws_send_text(msg, msg_id);
+    }
+}
+
+static void kz_ws_send_text(const std::string& msg, int64_t msg_id)
 {
     if(msg.empty())
     {

@@ -16,6 +16,7 @@ enum class WSState : int
 {
     Uninitialized = 0,
     Initialized,
+    Admitting,
     Connected,
     Disconnected,
     DisconnectedButWorthRetrying,

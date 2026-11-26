@@ -766,9 +766,22 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
 }
 std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
 {
-    ACK_CHECK_MISSING(data.heartbeat_interval);
-
-    int heartbeat_interval = (int)json_object_dotget_number(obj, "data.heartbeat_interval");
+    if (!json_object_dothas_value_of_type(obj, "data.heartbeat_interval", JSONNumber))
+    {
+        return nullptr;
+    }
+    const double interval = json_object_dotget_number(obj, "data.heartbeat_interval");
+    if (!(interval >= 1 && interval <= INT32_MAX))
+    {
+        return nullptr;
+    }
+    const int heartbeat_interval = static_cast<int>(interval);
+    WSState expected = WSState::Admitting;
+    if (!g_websocket_state.compare_exchange_strong(expected, WSState::Connected))
+    {
+        return nullptr;
+    }
+    kz_storage_requeue_all_pending();
     g_websocket.setPingInterval(heartbeat_interval);
     g_websocket.setMinWaitBetweenReconnectionRetries(5000);
     g_websocket.setMaxWaitBetweenReconnectionRetries(15000);
