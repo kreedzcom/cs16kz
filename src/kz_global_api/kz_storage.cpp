@@ -60,6 +60,7 @@ void kz_storage_init(void)
         kz_storage_database->exec("PRAGMA journal_mode=WAL;");
         kz_storage_database->exec("CREATE TABLE IF NOT EXISTS outgoing_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg_type INTEGER, msg TEXT NOT NULL, created_at INTEGER DEFAULT (strftime('%s','now')))");
         kz_storage_database->exec("CREATE TABLE IF NOT EXISTS upload_queue(id INTEGER PRIMARY KEY AUTOINCREMENT, msg_type INTEGER, local_uid TEXT NOT NULL, created_at INTEGER DEFAULT (strftime('%s','now')))");
+        kz_storage_database->exec("CREATE TABLE IF NOT EXISTS replay_identity(local_uid TEXT PRIMARY KEY, record_id TEXT NOT NULL)");
         kz_storage_database->setBusyTimeout(5000);
 
         kz_storage_initialized = true;
@@ -180,7 +181,7 @@ void kz_storage_requeue_all_pending(void)
     }
 }
 
-retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::function<std::string(int64_t)>& build)
+retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::function<std::string(int64_t)>& build, const char* record_id)
 {
     if (!kz_storage_database)
     {
@@ -234,6 +235,15 @@ retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::funct
         update.bind(1, *message);
         update.bind(2, static_cast<long long>(id));
         update.exec();
+        if (record_id)
+        {
+            SQLite::Statement identity(*kz_storage_database,
+                "INSERT INTO replay_identity (local_uid, record_id) VALUES (?, ?) "
+                "ON CONFLICT(local_uid) DO UPDATE SET record_id = excluded.record_id");
+            identity.bind(1, upload_uid);
+            identity.bind(2, record_id);
+            identity.exec();
+        }
         transaction.commit();
 
         const auto now = std::chrono::system_clock::now().time_since_epoch();
@@ -248,6 +258,28 @@ retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::funct
         return {};
     }
 }
+std::string kz_storage_get_record_id(const std::string& local_uid)
+{
+    if (!kz_storage_database)
+    {
+        return {};
+    }
+    try
+    {
+        SQLite::Statement query(*kz_storage_database, "SELECT record_id FROM replay_identity WHERE local_uid = ?");
+        query.bind(1, local_uid);
+        if (query.executeStep())
+        {
+            return query.getColumn(0).getString();
+        }
+    }
+    catch (const std::exception& e)
+    {
+        kz_log(&g_storage_log, "[Storage] Read replay identity: %s", e.what());
+    }
+    return {};
+}
+
 void kz_storage_delete(int64_t msg_id, StorageTable table)
 {
     {
@@ -333,8 +365,12 @@ void kz_storage_delete_by_value(const std::string& value, StorageTable table)
                 return;
         }
         SQLite::Statement query(*kz_storage_database, statement);
+        std::lock_guard<std::mutex> lock(g_retry_mtx);
         query.bind(1, value);
         query.exec();
+        g_retry_queue.erase(std::remove_if(g_retry_queue.begin(), g_retry_queue.end(), [&](const retry_msg& row) {
+            return row.table == table && *row.message == value;
+        }), g_retry_queue.end());
     }
     catch (const std::exception& e)
     {

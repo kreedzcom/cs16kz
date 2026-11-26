@@ -103,6 +103,6 @@ extern std::function<void()> kz_ws_ack_del_record_notify(JSON_Object* obj);
 
 extern bool kz_ws_try_fetch_replay(const char* mapname);
 extern void kz_ws_on_map_loaded(bool force);
-extern void kz_ws_delete_record_replay(const char* mapname, const char* local_uid);
+extern void kz_ws_delete_record_replay(const char* mapname, const char* local_uid, const char* record_id = nullptr);
 
 #endif

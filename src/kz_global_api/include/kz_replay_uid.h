@@ -6,6 +6,8 @@
 #include <string>
 
 /** Replay filename: <class:1>_<time_ms>_<steamid>_<timestamp>.krpz */
+std::string kz_replay_cache_uid(const std::string& uid, const std::string& record_id);
+
 bool kz_replay_parse_uid(const std::string& filename, uint8_t& run_class, uint32_t& time_ms);
 
 /** PRO (0) beats NUB (1); within a class, lower time_ms wins. */

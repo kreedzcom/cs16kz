@@ -92,5 +92,11 @@ int run_replay_uid_tests(void)
     expect(kz_replay_find_best_in_dir(map_dir).empty());
     expect(kz_replay_find_best_in_dir({}).empty());
 
+    const std::string local_uid = "0_00012345_steam_abc";
+    const auto first = kz_replay_cache_uid(local_uid, "01970000-0000-7000-8000-000000000001");
+    const auto second = kz_replay_cache_uid(local_uid, "01970000-0000-7000-8000-000000000002");
+    expect(!first.empty() && !second.empty() && first != second);
+    expect(kz_replay_cache_uid(local_uid, "../other").empty());
+
     return g_failures;
 }
