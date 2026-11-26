@@ -6,6 +6,7 @@
 #include "kz_cvars.h"
 #include "kz_replay.h"
 #include "kz_storage.h"
+#include "kz_outbox_transaction.h"
 #include "kz_natives.h"
 
 #include <exception>
@@ -211,40 +212,8 @@ retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::funct
         {
             g_retry_queue.reserve(std::max<size_t>(64, g_retry_queue.size() * 2));
         }
-        SQLite::Transaction transaction(*kz_storage_database);
-        SQLite::Statement insert(*kz_storage_database, outgoing
-            ? "INSERT INTO outgoing_queue (msg_type, msg) VALUES (?, '')"
-            : "INSERT INTO upload_queue (msg_type, local_uid) VALUES (?, '')");
-        insert.bind(1, static_cast<long long>(msg_type));
-        insert.exec();
-        const int64_t id = kz_storage_database->getLastInsertRowid();
-        // The JSON library serializes IDs through double.
-        if (outgoing && id > 9007199254740991LL)
-        {
-            throw std::runtime_error("outgoing ID exceeds the exact JSON integer range");
-        }
-        auto message = std::make_shared<std::string>(outgoing ? build(id) : upload_uid);
-        if (message->empty())
-        {
-            throw std::runtime_error("cannot persist an empty message");
-        }
-
-        SQLite::Statement update(*kz_storage_database, outgoing
-            ? "UPDATE outgoing_queue SET msg = ? WHERE id = ?"
-            : "UPDATE upload_queue SET local_uid = ? WHERE id = ?");
-        update.bind(1, *message);
-        update.bind(2, static_cast<long long>(id));
-        update.exec();
-        if (record_id)
-        {
-            SQLite::Statement identity(*kz_storage_database,
-                "INSERT INTO replay_identity (local_uid, record_id) VALUES (?, ?) "
-                "ON CONFLICT(local_uid) DO UPDATE SET record_id = excluded.record_id");
-            identity.bind(1, upload_uid);
-            identity.bind(2, record_id);
-            identity.exec();
-        }
-        transaction.commit();
+        const auto [id, message] = kz_persist_queue_message(
+            *kz_storage_database, msg_type, outgoing, build, upload_uid, record_id);
 
         const auto now = std::chrono::system_clock::now().time_since_epoch();
         const auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now).count();
