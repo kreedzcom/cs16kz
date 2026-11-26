@@ -1,6 +1,7 @@
 #include <cstdio>
 #include "kz_ws_protocol.h"
 #include "kz_run_state.h"
+#include "kz_upload_attempts.h"
 
 static_assert(!kz_run_accepts_events(KzRunState::Idle));
 static_assert(kz_run_accepts_events(KzRunState::Recording));
@@ -15,12 +16,43 @@ extern int run_path_validate_tests(void);
 extern int run_krp_validate_tests(void);
 extern int run_replay_uid_tests(void);
 
+static int test_upload_attempts()
+{
+    KzUploadAttempts attempts;
+    const auto now = std::chrono::steady_clock::time_point{};
+    const auto first = attempts.start("run", now);
+    if (!first || attempts.start("run", now))
+    {
+        return 1;
+    }
+    attempts.sent("run", first, now + std::chrono::seconds(30));
+    if (attempts.start("run", now + std::chrono::seconds(29)))
+    {
+        return 1;
+    }
+    const auto retry = attempts.start("run", now + std::chrono::seconds(30));
+    attempts.release("run", first);
+    if (!retry || retry == first || !attempts.is_current("run", retry))
+    {
+        return 1;
+    }
+    attempts.release("run");
+    if (attempts.is_current("run", retry))
+    {
+        return 1;
+    }
+    const auto reconnect = attempts.start("run", now);
+    attempts.clear();
+    return !reconnect || attempts.is_current("run", reconnect);
+}
+
 int main(void)
 {
     int failures = 0;
     failures += run_path_validate_tests();
     failures += run_krp_validate_tests();
     failures += run_replay_uid_tests();
+    failures += test_upload_attempts();
 
     if (failures != 0)
     {

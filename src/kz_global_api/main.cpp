@@ -580,7 +580,7 @@ void kz_api_cmd(void)
     if (FStrEq(domain, "status"))
     {
         size_t retry_size = 0;
-        size_t active_uploads_size = 0;
+        const size_t active_uploads_size = kz_ws_active_upload_count();
 
         uintmax_t db_size = 0;
         uintmax_t wal_size = 0;
@@ -588,10 +588,6 @@ void kz_api_cmd(void)
         {
             std::lock_guard<std::mutex> lock(g_retry_mtx);
             retry_size = g_retry_queue.size();
-        }
-        {
-            std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-            active_uploads_size = g_active_uploads.size();
         }
         {
             std::error_code ec;
