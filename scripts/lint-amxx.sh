@@ -12,14 +12,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PATTERN='MF_GetAmxString(Null)?.*sizeof'
 
-if matches=$(rg --pcre2 -n "${PATTERN}" "${ROOT}/src/"); then
+if matches=$(grep -rEn -- "${PATTERN}" "${ROOT}/src/"); then
   echo "::error::MF_GetAmxString misuse — returns AMXX-managed char*; do not pass a local buffer or sizeof (see kz_api_get_map_details in src/kz_global_api/kz_natives.cpp)"
   printf '%s\n' "${matches}"
   exit 1
 else
   status=$?
   if [ "${status}" -ne 1 ]; then
-    echo "::error::AMXX string API lint failed to scan source (rg exit ${status})" >&2
+    echo "::error::AMXX string API lint failed to scan source (grep exit ${status})" >&2
     exit "${status}"
   fi
 fi
