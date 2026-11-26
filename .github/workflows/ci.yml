@@ -102,7 +102,8 @@ jobs:
   e2e:
     name: Game server and API end-to-end
     needs: ci
-    runs-on: ubuntu-latest
+    # ReHLDS needs i386 socketcall, which Docker 29.4.2 on Ubuntu 26.04 blocks.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
