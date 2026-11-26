@@ -33,7 +33,9 @@ try {
 }
 finally {
     Pop-Location
-    if (Test-Path -LiteralPath $Exe) {
-        Remove-Item -LiteralPath $Exe
+    foreach ($TestOutput in @($Exe, [System.IO.Path]::ChangeExtension($Exe, ".pdb"))) {
+        if (Test-Path -LiteralPath $TestOutput) {
+            Remove-Item -LiteralPath $TestOutput
+        }
     }
 }
