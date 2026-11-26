@@ -27,6 +27,12 @@ namespace WSMsgIn {
     constexpr int ERROR_MSG      = 199;
 }
 
+// Parson returns -1 for missing and non-boolean values.
+constexpr bool kz_ws_valid_boolean(int value)
+{
+    return value == 0 || value == 1;
+}
+
 constexpr bool kz_ws_matches_ack(int64_t request, int response)
 {
     if (response == WSMsgIn::ERROR_MSG)

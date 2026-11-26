@@ -828,7 +828,12 @@ std::function<void()> kz_ws_ack_player_join(JSON_Object* obj)
     ACK_CHECK_MISSING(data.is_banned);
     ACK_CHECK_MISSING(data.steamid);
 
-    bool is_banned = json_object_dotget_boolean(obj, "data.is_banned") != 0;
+    const int banned = json_object_dotget_boolean(obj, "data.is_banned");
+    if (!kz_ws_valid_boolean(banned))
+    {
+        return nullptr;
+    }
+    const bool is_banned = banned == 1;
 
     const char* steamid = json_object_dotget_string(obj, "data.steamid");
     if (!steamid || !steamid[0])
@@ -918,7 +923,12 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
     ACK_CHECK_MISSING(data.local_uid);
 
     char local_uid[64] = {0};
-    bool status = json_object_dotget_boolean(obj, "data.status") != 0;
+    const int acknowledgment = json_object_dotget_boolean(obj, "data.status");
+    if (!kz_ws_valid_boolean(acknowledgment))
+    {
+        return nullptr;
+    }
+    const bool status = acknowledgment == 1;
 
     const char* uid_ptr = json_object_dotget_string(obj, "data.local_uid");
     if (!uid_ptr || !uid_ptr[0])
