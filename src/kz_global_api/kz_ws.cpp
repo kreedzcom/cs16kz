@@ -104,7 +104,13 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
                 fn = kz_ws_ack_invalid(root_obj);
             }
 
-            bool delete_msg = true;
+            // A record is retired only after its handler has made the outcome durable.
+            int64_t request_type = 0;
+            std::string request;
+            bool delete_msg = msg_id > 0 &&
+                kz_storage_try_get_outgoing(msg_id, &request_type, &request) &&
+                request_type != WSMsgOut::ADD_RECORD &&
+                kz_ws_matches_ack(request_type, msg_type);
             if (fn)
             {
                 auto start_time = std::chrono::steady_clock::now();
