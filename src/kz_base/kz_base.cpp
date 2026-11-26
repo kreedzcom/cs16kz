@@ -104,17 +104,13 @@ void kz_cmd_gocheck(edict_t* pEntity)
     }
 
     // TODO: fwd_gocheck_pre
-    if (p.timer_running && !p.timer_paused && p.cp_count)
+    kz_teleport_player(pEntity, origin, &angles);
+    if (g_api_initialized)
     {
-        // TODO: impl. ungc ?
-        if (g_api_initialized)
-        {
-            kz_rp_run_gocheck(id); // report to kz_global_api for the recording
-        }
+        kz_rp_run_gocheck(id);
     }
     if (!p.timer_paused)
     {
         p.tp_count++;
     }
-    kz_teleport_player(pEntity, origin, &angles);
 }

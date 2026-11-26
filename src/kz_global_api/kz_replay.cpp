@@ -6,6 +6,7 @@
 #include "kz_util.h"
 #include "kz_cvars.h"
 #include "kz_replay.h"
+#include "kz_run_state.h"
 #include "kz_storage.h"
 
 #include <algorithm>
@@ -23,6 +24,8 @@
 static krp_header g_header; // guarded by g_header_mtx; use kz_rp_get_header()
 static std::mutex g_header_mtx;
 krp_packet g_current_frame[33];
+static KzRunState g_capture_state[33]; // game thread only
+static bool g_capture_lost_event[33];
 std::atomic<bool> g_krp_running;
 
 kz::queue<log_entry> g_replay_writer_log(64);
@@ -67,10 +70,17 @@ int kz_rp_run_started(int id)
         kz_log(nullptr, "[KRP] The queue is full");
         return 0;
     }
+    g_capture_state[id] = KzRunState::Recording;
+    g_capture_lost_event[id] = false;
+    g_replay_writer_cv.notify_one();
     return 1;
 }
 int kz_rp_run_checkpoint(int id)
 {
+    if (!kz_run_accepts_events(g_capture_state[id]))
+    {
+        return 0;
+    }
     krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_EVENT;
@@ -81,13 +91,18 @@ int kz_rp_run_checkpoint(int id)
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
     {
-        kz_log(nullptr, "[KRP] The queue is full");
+        g_capture_lost_event[id] = true;
+        kz_log(nullptr, "[KRP] Run cannot be submitted after losing a replay event");
         return 0;
     }
     return 1;
 }
 int kz_rp_run_gocheck(int id)
 {
+    if (!kz_run_accepts_events(g_capture_state[id]))
+    {
+        return 0;
+    }
     krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_EVENT;
@@ -98,13 +113,18 @@ int kz_rp_run_gocheck(int id)
     g_current_frame[id].player_index = id;
     if (!g_replay_writer_queue.try_push(item))
     {
-        kz_log(nullptr, "[KRP] The queue is full");
+        g_capture_lost_event[id] = true;
+        kz_log(nullptr, "[KRP] Run cannot be submitted after losing a replay event");
         return 0;
     }
     return 1;
 }
 int kz_rp_run_paused(int id)
 {
+    if (g_capture_state[id] != KzRunState::Recording)
+    {
+        return 0;
+    }
     if (!kz_api_allow_pause || kz_api_allow_pause->value <= 0.0f)
     {
         kz_log(nullptr, "[KRP] Pause is disabled on global API servers (kz_api_allow_pause 0).");
@@ -121,6 +141,8 @@ int kz_rp_run_paused(int id)
         kz_log(nullptr, "[KRP] The queue is full");
         return 0;
     }
+    g_capture_state[id] = KzRunState::Paused;
+    g_replay_writer_cv.notify_one();
     return 1;
 }
 int kz_rp_run_unpaused(int id)
@@ -144,10 +166,17 @@ int kz_rp_run_unpaused(int id)
         kz_log(nullptr, "[KRP] The queue is full");
         return 0;
     }
+    g_capture_state[id] = KzRunState::Recording;
+    g_replay_writer_cv.notify_one();
     return 1;
 }
 int kz_rp_run_rejected(int id, bool delete_file)
 {
+    if (g_capture_state[id] == KzRunState::Idle)
+    {
+        return 0;
+    }
+    g_capture_state[id] = KzRunState::Idle;
     krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_REJECT;
@@ -161,11 +190,17 @@ int kz_rp_run_rejected(int id, bool delete_file)
         kz_log(nullptr, "[KRP] The queue is full");
         return 0;
     }
+    g_replay_writer_cv.notify_one();
     return 1;
 }
 
 int kz_rp_run_finished(int id, float time, bool submit_run, uint8_t char_prefix)
 {
+    if (g_capture_state[id] == KzRunState::Idle)
+    {
+        return 0;
+    }
+    g_capture_state[id] = KzRunState::Idle;
     krp_packet item = {};
     item.player_index = id;
     item.type = KRP_SIGNAL_FINISH;
@@ -175,7 +210,7 @@ int kz_rp_run_finished(int id, float time, bool submit_run, uint8_t char_prefix)
 
     // Sample no_submit on the game thread. The writer runs later, after disconnect
     // may have cleared the flag or reused the slot.
-    const bool no_submit = g_players[id].no_submit.load(std::memory_order_relaxed);
+    const bool no_submit = g_capture_lost_event[id] || g_players[id].no_submit.load(std::memory_order_relaxed);
     sig->submit = submit_run && !no_submit;
     sig->prefix = no_submit ? static_cast<uint8_t>('x') : kz_replay_filename_prefix(char_prefix);
     snprintf(sig->steamid_short, sizeof(sig->steamid_short), "%s", g_players[id].steamid_short);
@@ -187,6 +222,7 @@ int kz_rp_run_finished(int id, float time, bool submit_run, uint8_t char_prefix)
         kz_log(nullptr, "[KRP] The queue is full");
         return 0;
     }
+    g_replay_writer_cv.notify_one();
     return 1;
 }
 /***************************************************************************************************************/
@@ -362,6 +398,10 @@ void kz_rp_set_vars(int id, const entvars_t* vars)
 }
 void kz_rp_write_frame(int id)
 {
+    if (!kz_run_accepts_events(g_capture_state[id]))
+    {
+        return;
+    }
     g_current_frame[id].player_index = id;
     g_current_frame[id].type = KRP_SIGNAL_FRAME;
 
@@ -716,6 +756,10 @@ static void kz_rp_writer_thread(void)
                     {
                         kz_rp_write_frametype(s_fd[id], s_curr, KRP_FRAMETYPE_EVENT);
                         kz_rp_write_event(s_fd[id], s_curr);
+                    }
+                    else
+                    {
+                        break;
                     }
                     {
                         krp_signal* sig = reinterpret_cast<krp_signal*>(s_curr->data);
