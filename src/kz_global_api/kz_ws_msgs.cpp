@@ -605,6 +605,10 @@ void kz_ws_register(int type, WSMessageFunc pfn)
 void kz_ws_event_client_connect(edict_t* pEntity)
 {
     int id = indexOfEdict(pEntity);
+    if (!g_players[id].steamid[0])
+    {
+        return;
+    }
 
     JSON_Value* data_val = json_value_init_object();
     JSON_Object* data_obj = json_value_get_object(data_val);
@@ -613,11 +617,9 @@ void kz_ws_event_client_connect(edict_t* pEntity)
     json_object_set_string(data_obj, "nickname", g_players[id].nickname);
     json_object_set_string(data_obj, "steamid",  g_players[id].steamid);
 
-    const auto entry = kz_ws_store_msg(WSMsgOut::PLAYER_JOIN, data_val);
-    if (entry.message)
-    {
-        kz_ws_queue_msg(entry.message, entry.msg_id);
-    }
+    std::string event;
+    kz_ws_build_msg(WSMsgOut::PLAYER_JOIN, data_val, event, 0);
+    kz_ws_send_msg(event, 0);
 }
 void kz_ws_event_client_disconnect(edict_t* pEntity)
 {
@@ -633,11 +635,9 @@ void kz_ws_event_client_disconnect(edict_t* pEntity)
 
     json_object_set_string(data_obj, "steamid", g_players[id].steamid);
 
-    const auto entry = kz_ws_store_msg(WSMsgOut::PLAYER_LEAVE, data_val);
-    if (entry.message)
-    {
-        kz_ws_queue_msg(entry.message, entry.msg_id);
-    }
+    std::string event;
+    kz_ws_build_msg(WSMsgOut::PLAYER_LEAVE, data_val, event, 0);
+    kz_ws_send_msg(event, 0);
 }
 void kz_ws_event_map_change(void)
 {
@@ -739,6 +739,7 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
     g_websocket.setMaxWaitBetweenReconnectionRetries(15000);
     kz_log(&g_ws_log,"[kz_ws_ack_hello] Heartbeat interval: %d", heartbeat_interval);
 
+    std::function<void()> update_map;
     JSON_Value* map_info_val = json_object_dotget_value(obj, "data.map_info");
 
     if (map_info_val != nullptr && json_value_get_type(map_info_val) == JSONObject)
@@ -747,12 +748,27 @@ std::function<void()> kz_ws_ack_hello(JSON_Object* obj)
         json_object_set_value(json_value_get_object(temp_root), "data", json_value_deep_copy(map_info_val));
 
         // bit of a hack because im too lazy to do proper parsing
-        auto ret = kz_ws_ack_map_info(json_value_get_object(temp_root));
-
+        update_map = kz_ws_ack_map_info(json_value_get_object(temp_root));
         json_value_free(temp_root);
-        return ret;
     }
-    return nullptr;
+
+    return [update_map = std::move(update_map)]() {
+        if (g_websocket_state.load() != WSState::Connected)
+        {
+            return;
+        }
+        for (int id = 1; id <= gpGlobals->maxClients; ++id)
+        {
+            if (!g_players[id].is_bot && MF_IsPlayerIngame(id))
+            {
+                kz_ws_event_client_connect(INDEXENT(id));
+            }
+        }
+        if (update_map)
+        {
+            update_map();
+        }
+    };
 }
 std::function<void()> kz_ws_ack_map_info(JSON_Object* obj)
 {
