@@ -11,6 +11,7 @@
 #include "kz_natives.h"
 #include "kz_path_validate.h"
 #include "kz_replay_uid.h"
+#include "kz_upload_attempts.h"
 
 #include <algorithm>
 #include <chrono>
@@ -38,17 +39,33 @@ static const char* kz_json_dot_string(JSON_Object* obj, const char* key)
     return value ? value : "";
 }
 
-std::mutex g_active_uploads_mtx;
-std::set<std::string> g_active_uploads;
+static KzUploadAttempts g_upload_attempts;
 
-void kz_ws_release_active_upload(const char* local_uid)
+void kz_ws_release_active_upload(const char* local_uid, uint64_t attempt)
 {
-    if (!local_uid || !local_uid[0])
-    {
-        return;
-    }
-    std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-    g_active_uploads.erase(local_uid);
+    g_upload_attempts.release(local_uid, attempt);
+}
+
+bool kz_ws_is_active_upload(const ws_upload& upload)
+{
+    return g_websocket_state.load() == WSState::Connected &&
+        g_upload_attempts.is_current(upload.local_uid, upload.id);
+}
+
+void kz_ws_wait_for_file_ack(const ws_upload& upload)
+{
+    g_upload_attempts.sent(upload.local_uid, upload.id,
+        std::chrono::steady_clock::now() + std::chrono::seconds(30));
+}
+
+void kz_ws_cancel_active_uploads()
+{
+    g_upload_attempts.clear();
+}
+
+size_t kz_ws_active_upload_count()
+{
+    return g_upload_attempts.size();
 }
 
 static std::mutex g_replay_fetch_mtx;
@@ -477,52 +494,6 @@ static void kz_ws_delete_replay_files(const char* local_uid, const char* mapname
     }
 }
 
-static bool kz_ws_requeue_replay_upload(const char* local_uid)
-{
-    if (!local_uid || !local_uid[0])
-    {
-        return false;
-    }
-
-    std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / local_uid;
-    replay.replace_extension(".krpz");
-
-    if (!std::filesystem::exists(replay))
-    {
-        replay.replace_extension(".krpr");
-    }
-    if (!std::filesystem::exists(replay))
-    {
-        return false;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-        if (g_active_uploads.find(local_uid) != g_active_uploads.end())
-        {
-            return false;
-        }
-        g_active_uploads.insert(local_uid);
-    }
-
-    ws_upload metadata = {};
-    metadata.id = 0;
-    snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", local_uid);
-    snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
-
-    if (!kz_storage_save(0, StorageTable::upload_queue, [&](int64_t) { return std::string(local_uid); }).message)
-    {
-        kz_ws_release_active_upload(local_uid);
-        return false;
-    }
-    if (!kz_rp_compress_and_upload_async(metadata))
-    {
-        kz_ws_release_active_upload(local_uid);
-        return false;
-    }
-    return true;
-}
-
 static void kz_ws_format_time(char* buf, size_t sz, int64_t time_ms)
 {
     if (time_ms < 0) time_ms = 0;
@@ -567,79 +538,63 @@ void kz_ws_run_tasks(int max_tasks_per_frame)
     {
         std::lock_guard<std::mutex> lock(g_retry_mtx);
 
-        auto it  = g_retry_queue.begin();
-        auto now = std::chrono::system_clock::now();
-        auto ts  = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
-
-        while (it != g_retry_queue.end())
+        const auto now = std::chrono::system_clock::now().time_since_epoch();
+        const auto ts = std::chrono::duration_cast<std::chrono::seconds>(now).count();
+        for (auto& pending : g_retry_queue)
         {
-            if ((ts - it->timestamp) > (int)kz_api_retries_delay->value)
+            if (ts - pending.timestamp <= static_cast<int>(kz_api_retries_delay->value) ||
+                pending.retry_count > static_cast<int>(kz_api_retries_max->value) ||
+                pending.message->empty() ||
+                pending.msg_type == WSMsgOut::PLAYER_LEAVE || pending.msg_type == WSMsgOut::MAP_CHANGE)
             {
-                if (it->message->length() == 0 || it->retry_count > (int)kz_api_retries_max->value)
+                continue;
+            }
+
+            if (pending.table == StorageTable::outgoing_queue)
+            {
+                kz_ws_send_msg(*pending.message, pending.msg_id);
+            }
+            else
+            {
+                const auto& uid = *pending.message;
+                if (!kz_ws_valid_replay_segment(uid.c_str()) || uid.size() >= sizeof(ws_upload::local_uid))
                 {
-                    it = g_retry_queue.erase(it);
+                    continue;
+                }
+                const auto attempt = g_upload_attempts.start(uid, std::chrono::steady_clock::now());
+                if (!attempt)
+                {
                     continue;
                 }
 
-                // The following messages doesn't require ACK (data send back to us)
-                if (it->msg_type == WSMsgOut::PLAYER_LEAVE || it->msg_type == WSMsgOut::MAP_CHANGE)
+                std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / uid;
+                std::error_code ec;
+                replay.replace_extension(KRP_EXT_COMPRESSED);
+                if (!std::filesystem::exists(replay, ec))
                 {
-                    it = g_retry_queue.erase(it);
-                    continue;
+                    replay.replace_extension(KRP_EXT_RAW);
                 }
-                if (it->table == StorageTable::outgoing_queue)
+                const auto path = replay.string();
+                ws_upload metadata{};
+                if (path.size() >= sizeof(metadata.filepath) || !std::filesystem::exists(replay, ec))
                 {
-                    kz_ws_send_msg(*(it->message), it->msg_id);
+                    g_upload_attempts.release(uid, attempt);
                 }
-                else if (it->table == StorageTable::upload_queue)
+                else
                 {
-                    std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-                    if (g_active_uploads.find(*(it->message)) == g_active_uploads.end())
+                    metadata.id = attempt;
+                    snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", uid.c_str());
+                    snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", path.c_str());
+                    if (!kz_rp_compress_and_upload_async(metadata))
                     {
-                        ws_upload metadata = {};
-                        metadata.id = 0;
-
-                        std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / *(it->message);
-                        replay.replace_extension(".krpz");
-
-                        snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", it->message->c_str());
-                        if (!std::filesystem::exists(replay))
-                        {
-                            replay.replace_extension(".krpr");
-                        }
-                        snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
-
-                        if (std::filesystem::exists(replay))
-                        {
-                            g_active_uploads.insert(*(it->message));
-                            if (kz_api_log_upload->value > 0.0f)
-                            {
-                                kz_log(nullptr, "[UPLOAD] Retry (%d): %s", it->retry_count + 1, std::filesystem::relative(replay, g_data_dir).string().c_str());
-                            }
-                            if (!kz_rp_compress_and_upload_async(metadata))
-                            {
-                                g_active_uploads.erase(*(it->message));
-                            }
-                        }
-                        else
-                        {
-                            if (kz_api_log_upload->value > 0.0f)
-                            {
-                                kz_log(nullptr, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).string().c_str());
-                            }
-                        }
+                        g_upload_attempts.release(uid, attempt);
                     }
                 }
-
-                it->timestamp = ts;
-                it->retry_count++;
-                break;
             }
-            ++it;
-        }
-        if (!g_retry_queue.empty())
-        {
-            return;
+
+            pending.timestamp = ts;
+            ++pending.retry_count;
+            break;
         }
     }
 }
@@ -744,10 +699,7 @@ std::function<void()> kz_ws_ack_error(JSON_Object* obj)
                 kz_storage_delete(msg_id, StorageTable::outgoing_queue);
                 kz_ws_delete_replay_files(uid.c_str(), nullptr);
                 kz_storage_delete_by_value(uid, StorageTable::upload_queue);
-                {
-                    std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-                    g_active_uploads.erase(uid);
-                }
+                kz_ws_release_active_upload(uid.c_str());
                 kz_log(nullptr, "[kz_ws_ack_error] Discarded replay for uid=%s (%s)", uid.c_str(), msg.c_str());
             };
         }
@@ -951,47 +903,13 @@ std::function<void()> kz_ws_ack_record_ack(JSON_Object* obj)
         return nullptr;
     }
 
-    ws_upload metadata = {};
-    metadata.id = 0;
-
-    std::filesystem::path replay = g_data_dir / "kz_global" / "replays" / local_uid;
-    replay.replace_extension(".krpr");
-
-    snprintf(metadata.local_uid, sizeof(metadata.local_uid), "%s", local_uid);
-    snprintf(metadata.filepath, sizeof(metadata.filepath), "%s", replay.string().c_str());
-
-    if (std::filesystem::exists(replay))
+    auto replay = g_data_dir / "kz_global" / "replays" / local_uid;
+    replay.replace_extension(KRP_EXT_RAW);
+    std::error_code ec;
+    if (std::filesystem::exists(replay, ec) &&
+        kz_storage_save(0, StorageTable::upload_queue, [&](int64_t) { return std::string(local_uid); }).message)
     {
-        {
-            std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-            g_active_uploads.insert(local_uid);
-        }
-
-
-        if (kz_api_log_upload->value > 0.0f)
-        {
-            kz_log(&g_ws_log, "[UPLOAD] File: %s", std::filesystem::relative(replay, g_data_dir).string().c_str());
-        }
-
-        if (!kz_storage_save(0, StorageTable::upload_queue, [&](int64_t) { return std::string(metadata.local_uid); }).message)
-        {
-            kz_ws_release_active_upload(local_uid);
-            return nullptr;
-        }
         kz_storage_delete(msg_id, StorageTable::outgoing_queue);
-        return [metadata]() {
-                if (!kz_rp_compress_and_upload_async(metadata))
-                {
-                    kz_ws_release_active_upload(metadata.local_uid);
-                }
-            };
-    }
-    else
-    {
-        if (kz_api_log_upload->value > 0.0f)
-        {
-            kz_log(&g_ws_log, "[UPLOAD] File does not exist: %s", std::filesystem::relative(replay, g_data_dir).string().c_str());
-        }
     }
     return nullptr;
 }
@@ -1032,10 +950,7 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
                     ++it;
                 }
             }
-            {
-                std::lock_guard<std::mutex> lock(g_active_uploads_mtx);
-                g_active_uploads.erase(local_uid);
-            }
+            kz_ws_release_active_upload(local_uid);
             kz_storage_delete_by_value(local_uid, StorageTable::upload_queue);
         };
 
@@ -1123,10 +1038,12 @@ std::function<void()> kz_ws_ack_file_ack(JSON_Object* obj)
         }
     }
 
-    kz_log(&g_ws_log, "[ACK] Upload rejected for uid=%s", local_uid);
-    return [uid = std::string(local_uid)]() {
-        kz_ws_requeue_replay_upload(uid.c_str());
-    };
+    else
+    {
+        kz_log(&g_ws_log, "[ACK] Upload rejected for uid=%s", local_uid);
+        kz_ws_release_active_upload(local_uid);
+    }
+    return nullptr;
 }
 
 std::function<void()> kz_ws_ack_get_replay(JSON_Object* obj)

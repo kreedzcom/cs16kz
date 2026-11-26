@@ -1016,6 +1016,12 @@ static void kz_rp_upload_thread(void)
     {
         while (ws_upload* item = g_replay_upload_queue.front())
         {
+            if (!kz_ws_is_active_upload(*item))
+            {
+                kz_ws_release_active_upload(item->local_uid, item->id);
+                g_replay_upload_queue.pop();
+                continue;
+            }
             std::filesystem::path pathname = item->filepath;
             FILE* fp = nullptr;
 
@@ -1029,7 +1035,7 @@ static void kz_rp_upload_thread(void)
                 if (!fp)
                 {
                     kz_log(&g_replay_upload_log, "[UPLOAD] Failed to compress file: %s", std::filesystem::relative(pathname, g_data_dir).string().c_str());
-                    kz_ws_release_active_upload(item->local_uid);
+                    kz_ws_release_active_upload(item->local_uid, item->id);
                     g_replay_upload_queue.pop();
                     continue;
                 }
@@ -1037,14 +1043,16 @@ static void kz_rp_upload_thread(void)
             if (!fp)
             {
                 kz_log(&g_replay_upload_log, "[UPLOAD] fopen failure: %s", strerror(errno));
-                kz_ws_release_active_upload(item->local_uid);
+                kz_ws_release_active_upload(item->local_uid, item->id);
                 g_replay_upload_queue.pop();
                 continue;
             }
 
             const size_t max_data_per_chunk = (CHUNK_SIZE - sizeof(ws_uchunk_header));
-            fseek(fp, 0, SEEK_END);
-            uint32_t total_chunks = (ftell(fp) + (max_data_per_chunk - 1)) / max_data_per_chunk;
+            const long file_size = fseek(fp, 0, SEEK_END) == 0 ? ftell(fp) : -1;
+            const uint32_t total_chunks = file_size > 0
+                ? (static_cast<uint64_t>(file_size) + max_data_per_chunk - 1) / max_data_per_chunk
+                : 0;
             rewind(fp);
 
             if (kz_api_log_upload->value > 0.0f)
@@ -1059,21 +1067,30 @@ static void kz_rp_upload_thread(void)
             size_t bytes = 0;
 
             auto last_log_time = std::chrono::steady_clock::now();
+            bool sent_all = total_chunks > 0;
             for (uint32_t i = 0; i < total_chunks; ++i)
             {
                 bytes = fread(data_ptr, 1, max_data_per_chunk, fp);
-                if (bytes > 0)
+                if (!bytes || !kz_ws_is_active_upload(*item))
+                {
+                    sent_all = false;
+                    break;
+                }
                 {
                     header = reinterpret_cast<ws_uchunk_header*>(buffer);
                     memset(header, 0, sizeof(*header));
 
-                    header->id             = item->id;
+                    header->id             = 0;
                     header->chunk_index    = i;
                     header->chunk_checksum = UTIL_CRC32(data_ptr, bytes);
                     header->chunk_total    = static_cast<uint64_t>(total_chunks);
                     memcpy(header->local_uid, item->local_uid, sizeof(header->local_uid));
 
-                    g_websocket.sendBinary(std::string(buffer, sizeof(*header) + bytes));
+                    if (!g_websocket.sendBinary(std::string(buffer, sizeof(*header) + bytes)).success)
+                    {
+                        sent_all = false;
+                        break;
+                    }
                     // Stay under API replay byte rate limit (~5 MiB/s per server).
                     std::this_thread::sleep_for(std::chrono::milliseconds(13));
                 }
@@ -1088,6 +1105,14 @@ static void kz_rp_upload_thread(void)
                         last_log_time = now;
                     }
                 }
+            }
+            if (sent_all)
+            {
+                kz_ws_wait_for_file_ack(*item);
+            }
+            else
+            {
+                kz_ws_release_active_upload(item->local_uid, item->id);
             }
             g_replay_upload_queue.pop();
             fclose(fp);

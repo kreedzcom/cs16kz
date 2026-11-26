@@ -151,6 +151,7 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
         }
         case ix::WebSocketMessageType::Close:
         {
+            kz_ws_cancel_active_uploads();
             kz_storage_uninit();
             kz_log(&g_ws_log, "[WS] Connection closed (%d): %s", msg->closeInfo.code, msg->closeInfo.reason.c_str());
             // 1008 = policy violation (bad token, unknown plugin version, cutoff, etc.) — do not spin-reconnect.
@@ -167,6 +168,7 @@ static void kz_ws_onmessage(const ix::WebSocketMessagePtr& msg)
         }
         case ix::WebSocketMessageType::Error:
         {
+            kz_ws_cancel_active_uploads();
             kz_storage_uninit();
             kz_log(&g_ws_log, "[WS] Error occured (%d): %s", msg->errorInfo.http_status, msg->errorInfo.reason.c_str());
             switch(msg->errorInfo.http_status)

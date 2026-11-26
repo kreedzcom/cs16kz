@@ -195,12 +195,23 @@ retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::funct
     try
     {
         std::lock_guard<std::mutex> lock(g_retry_mtx);
+        const bool outgoing = table == StorageTable::outgoing_queue;
+        const std::string upload_uid = outgoing ? std::string() : build(0);
+        if (!outgoing)
+        {
+            const auto existing = std::find_if(g_retry_queue.begin(), g_retry_queue.end(), [&](const retry_msg& row) {
+                return row.table == StorageTable::upload_queue && *row.message == upload_uid;
+            });
+            if (existing != g_retry_queue.end())
+            {
+                return *existing;
+            }
+        }
         if (g_retry_queue.size() == g_retry_queue.capacity())
         {
             g_retry_queue.reserve(std::max<size_t>(64, g_retry_queue.size() * 2));
         }
         SQLite::Transaction transaction(*kz_storage_database);
-        const bool outgoing = table == StorageTable::outgoing_queue;
         SQLite::Statement insert(*kz_storage_database, outgoing
             ? "INSERT INTO outgoing_queue (msg_type, msg) VALUES (?, '')"
             : "INSERT INTO upload_queue (msg_type, local_uid) VALUES (?, '')");
@@ -212,7 +223,7 @@ retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::funct
         {
             throw std::runtime_error("outgoing ID exceeds the exact JSON integer range");
         }
-        auto message = std::make_shared<std::string>(build(id));
+        auto message = std::make_shared<std::string>(outgoing ? build(id) : upload_uid);
         if (message->empty())
         {
             throw std::runtime_error("cannot persist an empty message");
@@ -228,7 +239,7 @@ retry_msg kz_storage_save(int64_t msg_type, StorageTable table, const std::funct
 
         const auto now = std::chrono::system_clock::now().time_since_epoch();
         const auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now).count();
-        const retry_msg entry{0, msg_type, id, timestamp, table, message};
+        const retry_msg entry{0, msg_type, id, outgoing ? timestamp : 0, table, message};
         g_retry_queue.push_back(entry);
         return entry;
     }
