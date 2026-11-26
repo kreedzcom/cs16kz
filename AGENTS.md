@@ -31,7 +31,7 @@ Supported targets: **Linux or Windows**, **x86 only** (32-bit, matching CS 1.6 d
 ```bash
 zig build                              # build module + run host unit tests
 zig build test -Dtest-only=true        # host unit tests only (no AMXX deps)
-./build.sh                             # Linux release: x86-linux-gnu + rename .so
+./build.sh                             # Linux x86 release build with final AMXX filenames
 ```
 
 Windows:
