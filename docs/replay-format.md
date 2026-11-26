@@ -105,7 +105,7 @@ Record bodies by type:
 - **KEYFRAME** — a 16-byte all-`0xFF` mask, followed by the complete 112-byte `krp_frame` (`cmd`, then `vars`, then `glb`). The first frame of every run is always a keyframe.
 - **DELTA** — a 16-byte `krp_mask` bitmask followed by only the changed bytes (see §4).
 
-The first frame after a run start or an unpause is written as a **keyframe**; all other ticks are **deltas**.
+A fresh run starts with zero checkpoints and zero gochecks. If an event occurs after run start but before the first movement tick, the writer emits it after the first keyframe in arrival order. The first frame after an unpause is also a keyframe. Other movement ticks are deltas.
 
 ### Run lifecycle signals
 

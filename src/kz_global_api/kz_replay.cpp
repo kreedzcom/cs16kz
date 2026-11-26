@@ -14,6 +14,7 @@
 #include <filesystem>
 
 #include "krp_codec.h"
+#include "krp_start_events.h"
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -557,10 +558,10 @@ static void kz_rp_write_frametype(FILE* fp, krp_packet* curr, uint8_t frametype)
         fwrite(&mask, sizeof(mask), 1, fp);
     }
 }
-static void kz_rp_write_event(FILE* fp, krp_packet* curr)
+static void kz_rp_write_event(FILE* fp, uint8_t event)
 {
-    krp_signal* sig = reinterpret_cast<krp_signal*>(curr->data);
-    fwrite(&sig->event, sizeof(sig->event), 1, fp);
+    fputc(KRP_FRAMETYPE_EVENT, fp);
+    fputc(event, fp);
 }
 static void kz_rp_write_keyframe(FILE* fp, krp_packet* curr)
 {
@@ -699,6 +700,7 @@ static void kz_rp_writer_thread(void)
     static FILE* s_fd[33];
     static krp_packet s_last[33];
     static size_t s_counter[33];
+    static KrpStartEvents s_start_events[33];
     static uint32_t s_checkpoints[33];
     static uint32_t s_gochecks[33];
 
@@ -714,6 +716,9 @@ static void kz_rp_writer_thread(void)
             {
                 case KRP_SIGNAL_START:
                 {
+                    s_start_events[id].reset();
+                    s_checkpoints[id] = 0;
+                    s_gochecks[id] = 0;
 
                     if(s_fd[id])
                     {
@@ -734,6 +739,7 @@ static void kz_rp_writer_thread(void)
                     }
 
                     header.timestamp = sig->ts;
+                    header.run = {};
 
                     std::filesystem::path path = g_data_dir / "kz_global" / "replays" / mapname / sig->steamid_short;
                     snprintf(s_filepath[id], sizeof(s_filepath[0]), "%s.tmp", path.string().c_str());
@@ -751,31 +757,26 @@ static void kz_rp_writer_thread(void)
                     }
                     memset(&s_last[id], 0, sizeof(s_last[0]));
                     s_counter[id] = 0;
-                    s_checkpoints[id] = 0;
-                    s_gochecks[id] = 0;
                     break;
                 }
                 case KRP_SIGNAL_EVENT:
                 {
-                    if (s_fd[id])
-                    {
-                        kz_rp_write_frametype(s_fd[id], s_curr, KRP_FRAMETYPE_EVENT);
-                        kz_rp_write_event(s_fd[id], s_curr);
-                    }
-                    else
+                    if (!s_fd[id])
                     {
                         break;
                     }
+                    const auto event = reinterpret_cast<krp_signal*>(s_curr->data)->event;
+                    if (!s_start_events[id].defer_until_keyframe(event))
                     {
-                        krp_signal* sig = reinterpret_cast<krp_signal*>(s_curr->data);
-                        if (sig->event == KRP_EVENT_CHECKPOINT)
-                        {
-                            s_checkpoints[id]++;
-                        }
-                        else if (sig->event == KRP_EVENT_GOCHECK)
-                        {
-                            s_gochecks[id]++;
-                        }
+                        kz_rp_write_event(s_fd[id], event);
+                    }
+                    if (event == KRP_EVENT_CHECKPOINT)
+                    {
+                        s_checkpoints[id]++;
+                    }
+                    else if (event == KRP_EVENT_GOCHECK)
+                    {
+                        s_gochecks[id]++;
                     }
                     break;
                 }
@@ -789,6 +790,9 @@ static void kz_rp_writer_thread(void)
                             // We write a full frame (no delta) when the run just started or got unpaused (savepos)
                             kz_rp_write_frametype(s_fd[id], s_curr, KRP_FRAMETYPE_KEYFRAME);
                             kz_rp_write_keyframe(s_fd[id], s_curr);
+                            s_start_events[id].after_keyframe([fp = s_fd[id]](uint8_t event) {
+                                kz_rp_write_event(fp, event);
+                            });
                         }
                         else
                         {
@@ -845,6 +849,7 @@ static void kz_rp_writer_thread(void)
                         if (s_fd[id])
                         {
                             fseek(s_fd[id], 0, SEEK_END);
+                            s_start_events[id].has_frame = ftell(s_fd[id]) > static_cast<long>(sizeof(krp_header));
                             kz_rp_run_from_header(s_fd[id], &s_checkpoints[id], &s_gochecks[id]);
                         }
                     }
@@ -856,6 +861,7 @@ static void kz_rp_writer_thread(void)
                 }
                 case KRP_SIGNAL_REJECT:
                 {
+                    s_start_events[id].reset();
                     if (s_fd[id])
                     {
                         fclose(s_fd[id]);
@@ -879,6 +885,15 @@ static void kz_rp_writer_thread(void)
                 {
                     if (s_fd[id])
                     {
+                        if (!s_start_events[id].has_frame)
+                        {
+                            kz_log(&g_replay_writer_log, "[KRP] Discarding finish without a captured frame for player (%d)", id);
+                            fclose(s_fd[id]);
+                            s_fd[id] = nullptr;
+                            unlink(s_filepath[id]);
+                            s_start_events[id].reset();
+                            break;
+                        }
                         char new_path[255];
                         krp_signal* sig     = reinterpret_cast<krp_signal*>(s_curr->data);
                         std::string mapname = kz_rp_mapname_from_header(s_fd[id]);
